@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+  --sky-a: #3b82f6;
+  --sky-b: #60a5fa;
+  --sky-c: #93c5fd;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: #0f172a;
+  overscroll-behavior-y: none;
+}
+
+/* The sky gradient is set as CSS variables from JS so it can cross-fade
+   between conditions instead of snapping. */
+.sky {
+  background: linear-gradient(180deg, var(--sky-a) 0%, var(--sky-b) 55%, var(--sky-c) 100%);
+  transition: --sky-a 700ms linear, --sky-b 700ms linear, --sky-c 700ms linear;
+}
+
+@property --sky-a {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #3b82f6;
+}
+@property --sky-b {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #60a5fa;
+}
+@property --sky-c {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #93c5fd;
+}
+
+/* Frosted panel — the recurring surface for every card in the app. */
+@layer components {
+  .glass {
+    @apply rounded-2xl border border-white/15 bg-white/10 backdrop-blur-xl;
+  }
+  .glass-strong {
+    @apply rounded-2xl border border-white/20 bg-white/20 backdrop-blur-2xl;
+  }
+  .card-label {
+    @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/60;
+  }
+}
+
+/* Horizontal strips scroll without a visible bar on desktop, matching the
+   native feel on touch devices. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Respect the notch / gesture bar on phones and in the APK. */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

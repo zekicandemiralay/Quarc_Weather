@@ -1,0 +1,9 @@
+{
+  "appId": "com.quarc.weather",
+  "appName": "Quarc Weather",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0f172a"
+  }
+}

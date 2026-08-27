@@ -1,0 +1,15 @@
+.env
+.claude/
+node_modules/
+backend/data/
+frontend/dist/
+mobile/www/*
+!mobile/www/.gitkeep
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/*.keystore
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+backup_*/
