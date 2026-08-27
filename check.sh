@@ -5,6 +5,10 @@
 #
 #  Verifies containers, the shared auth wiring, SSL, the database,
 #  and live upstream reachability to Open-Meteo.
+#
+#  Run this on the server (Linux). Under Git Bash on Windows, MSYS rewrites
+#  container-absolute paths such as /app/data into C:/Program Files/Git/app/data,
+#  so the database and endpoint checks report false negatives there.
 # ============================================================
 
 HOST="${QUARC_HOST:-quarcnet0.tail84500c.ts.net}"
