@@ -90,13 +90,29 @@ else
 fi
 
 # --- SSL certificate ----------------------------------------------------
+# What matters is whether *nginx* can read the cert, not whether the person
+# running this script can: /var/lib/tailscale/certs is root-owned, so a
+# host-side file test gives a false negative for any non-root user.
+# Expiry is read off the live TLS connection rather than the file — that
+# needs no filesystem access, and it reports the cert actually being served.
+# (nginx:alpine ships no openssl binary, so don't ask the container for it.)
 echo ""
 echo "TLS"
-if [ -f "/var/lib/tailscale/certs/$HOST.crt" ]; then
-  EXPIRY=$(openssl x509 -enddate -noout -in "/var/lib/tailscale/certs/$HOST.crt" 2>/dev/null | cut -d= -f2)
-  ok "Tailscale certificate present (expires $EXPIRY)"
+EXPIRY=$(echo | openssl s_client -connect "$HOST:$PORT" -servername "$HOST" 2>/dev/null \
+  | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+
+if [ -n "$FRONTEND" ] && docker exec "$FRONTEND" test -f "/etc/nginx/ssl/$HOST.crt" 2>/dev/null; then
+  if [ -n "$EXPIRY" ]; then
+    ok "certificate mounted and readable by nginx (expires $EXPIRY)"
+  else
+    ok "certificate mounted and readable by nginx"
+  fi
+elif [ -n "$EXPIRY" ]; then
+  ok "certificate is being served (expires $EXPIRY)"
+elif [ -r "/var/lib/tailscale/certs/$HOST.crt" ]; then
+  ok "Tailscale certificate present on host"
 else
-  warn "certificate not found at /var/lib/tailscale/certs/$HOST.crt"
+  warn "could not confirm the certificate — nginx may not be running. If the site serves HTTPS in a browser this is cosmetic; if not, run: sudo tailscale cert $HOST"
 fi
 
 # --- Database -----------------------------------------------------------
