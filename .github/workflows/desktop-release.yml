@@ -171,7 +171,7 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > mobile/android/app/release.keystore
 
-      - name: Verify decoded keystore (temporary debug — hash only, never the secret)
+      - name: Verify decoded keystore (hash only — never the secret; catches a bad KEYSTORE_BASE64 upload immediately instead of via a cryptic KeytoolException)
         run: |
           ls -la mobile/android/app/release.keystore
           sha256sum mobile/android/app/release.keystore
@@ -181,7 +181,7 @@ jobs:
         env:
           KEYSTORE_PATH: release.keystore
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: quarc-music
+          KEY_ALIAS: quarc-weather
           KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: chmod +x gradlew && ./gradlew assembleRelease
 
