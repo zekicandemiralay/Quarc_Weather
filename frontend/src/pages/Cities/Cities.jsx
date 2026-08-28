@@ -58,22 +58,30 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
       </button>
 
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100 md:opacity-60">
-        <button
-          onClick={() => onMove(-1)}
-          disabled={isFirst}
-          aria-label="Move up"
-          className="rounded-full bg-black/25 px-2 text-xs text-white disabled:opacity-30"
-        >
-          ↑
-        </button>
-        <button
-          onClick={() => onMove(1)}
-          disabled={isLast}
-          aria-label="Move down"
-          className="rounded-full bg-black/25 px-2 text-xs text-white disabled:opacity-30"
-        >
-          ↓
-        </button>
+        {/* My Location is always pinned first by the server regardless of
+            sort_order, so manually reordering it doesn't do anything —
+            hiding the arrows avoids offering a control that would appear to
+            silently fail. */}
+        {!city.is_current_location && (
+          <>
+            <button
+              onClick={() => onMove(-1)}
+              disabled={isFirst}
+              aria-label="Move up"
+              className="rounded-full bg-black/25 px-2 text-xs text-white disabled:opacity-30"
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => onMove(1)}
+              disabled={isLast}
+              aria-label="Move down"
+              className="rounded-full bg-black/25 px-2 text-xs text-white disabled:opacity-30"
+            >
+              ↓
+            </button>
+          </>
+        )}
         <button
           onClick={onRemove}
           aria-label={t('app.delete')}
@@ -109,7 +117,8 @@ export default function Cities() {
   }, [load]);
 
   async function handleRemove(city) {
-    if (!window.confirm(t('cities.removeConfirm', { name: city.name }))) return;
+    const label = city.is_current_location ? t('cities.myLocation') : city.name;
+    if (!window.confirm(t('cities.removeConfirm', { name: label }))) return;
     setCities((prev) => prev.filter((c) => c.id !== city.id));
     try {
       await deleteCity(city.id);
@@ -121,7 +130,10 @@ export default function Cities() {
   async function handleMove(index, delta) {
     const next = [...cities];
     const target = index + delta;
-    if (target < 0 || target >= next.length) return;
+    // A pinned My Location card (if present) always occupies index 0 server-
+    // side, so no regular city may swap into that slot.
+    const floor = next[0]?.is_current_location ? 1 : 0;
+    if (target < floor || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     setCities(next);
     try {
@@ -181,7 +193,7 @@ export default function Cities() {
               city={city}
               t={t}
               i18n={i18n}
-              isFirst={i === 0}
+              isFirst={i === 0 || (i === 1 && cities[0]?.is_current_location)}
               isLast={i === cities.length - 1}
               onOpen={() => navigate(`/city/${city.id}`)}
               onRemove={() => handleRemove(city)}

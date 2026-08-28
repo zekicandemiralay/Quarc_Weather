@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { searchCities, addCity, listCities } from '../../lib/api';
+import { getCurrentPositionSafe, currentLocationPayload } from '../../lib/geolocation';
 
 export default function AddCity() {
   const navigate = useNavigate();
@@ -67,34 +68,22 @@ export default function AddCity() {
     }
   }
 
-  function handleUseLocation() {
+  async function handleUseLocation() {
     if (!navigator.geolocation) {
       setError(t('cities.locationUnavailable'));
       return;
     }
     setBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        // Open-Meteo has no reverse-geocoding endpoint, so there's no honest way
-        // to name the point — searching the geocoder for a latitude string just
-        // returns unrelated places. Store the coordinates and let the card show
-        // "My Location"; the timezone comes back with the forecast anyway.
-        handleAdd(
-          {
-            name: `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`,
-            latitude,
-            longitude,
-          },
-          true
-        );
-      },
-      (err) => {
-        setBusy(false);
-        setError(err.code === err.PERMISSION_DENIED ? t('cities.locationDenied') : t('cities.locationUnavailable'));
-      },
-      { timeout: 10000, enableHighAccuracy: false }
-    );
+    const coords = await getCurrentPositionSafe({ timeout: 10000 });
+    if (!coords) {
+      setBusy(false);
+      // getCurrentPositionSafe swallows the specific error (denied vs.
+      // unavailable vs. timed out) — a generic message is honest here since
+      // we genuinely can't tell which one happened.
+      setError(t('cities.locationUnavailable'));
+      return;
+    }
+    handleAdd(currentLocationPayload(coords), true);
   }
 
   return (

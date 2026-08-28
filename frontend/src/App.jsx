@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './store/authStore';
 import usePrefsStore from './store/prefsStore';
 import Login from './pages/Login/Login';
-import Cities from './pages/Cities/Cities';
+import Home from './pages/Cities/Home';
 import AddCity from './pages/Cities/AddCity';
 import WeatherView from './pages/Weather/WeatherView';
 import Settings from './pages/Settings/Settings';
@@ -52,7 +52,7 @@ export default function App() {
         path="/"
         element={
           <ProtectedRoute>
-            <Cities />
+            <Home />
           </ProtectedRoute>
         }
       />

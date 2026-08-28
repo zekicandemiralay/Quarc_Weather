@@ -52,7 +52,7 @@ router.get('/', async (req, res) => {
  */
 router.get('/overview', async (req, res) => {
   const cities = getDb()
-    .prepare('SELECT * FROM cities WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC')
+    .prepare('SELECT * FROM cities WHERE user_id = ? ORDER BY is_current_location DESC, sort_order ASC, created_at ASC')
     .all(req.user.id);
 
   if (cities.length === 0) return res.json([]);

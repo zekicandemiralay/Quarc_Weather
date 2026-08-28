@@ -3,15 +3,18 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db');
 
-// GET /api/cities — the signed-in user's saved list, in their chosen order.
+// GET /api/cities — the signed-in user's saved list. My Location, if present,
+// is always pinned first regardless of manual sort order — the app's landing
+// screen and the city list both rely on that ordering.
 router.get('/', (req, res) => {
   const rows = getDb()
-    .prepare('SELECT * FROM cities WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC')
+    .prepare('SELECT * FROM cities WHERE user_id = ? ORDER BY is_current_location DESC, sort_order ASC, created_at ASC')
     .all(req.user.id);
   res.json(rows);
 });
 
-// POST /api/cities — save a city from a geocoder result.
+// POST /api/cities — save a city from a geocoder result, or move the user's
+// live-location pin to a new position.
 router.post('/', (req, res) => {
   const { name, country, country_code, admin1, latitude, longitude, timezone, is_current_location } = req.body || {};
 
@@ -23,13 +26,7 @@ router.post('/', (req, res) => {
   }
 
   const db = getDb();
-  const max = db
-    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM cities WHERE user_id = ?')
-    .get(req.user.id);
-
-  const city = {
-    id: uuidv4(),
-    user_id: req.user.id,
+  const fields = {
     name: String(name).slice(0, 120),
     country: country ? String(country).slice(0, 120) : null,
     country_code: country_code ? String(country_code).slice(0, 8) : null,
@@ -37,6 +34,48 @@ router.post('/', (req, res) => {
     latitude,
     longitude,
     timezone: timezone ? String(timezone).slice(0, 64) : null,
+  };
+
+  // There is at most one "My Location" row per user. Update it in place
+  // instead of inserting a new one each time — otherwise every app open in a
+  // new spot (or every trip) would leave a trail of stale live-location pins
+  // behind rather than moving the one pin that represents "here, now".
+  if (is_current_location) {
+    const existing = db
+      .prepare('SELECT * FROM cities WHERE user_id = ? AND is_current_location = 1')
+      .get(req.user.id);
+
+    if (existing) {
+      try {
+        db.prepare(
+          `UPDATE cities SET name=@name, country=@country, country_code=@country_code, admin1=@admin1,
+             latitude=@latitude, longitude=@longitude, timezone=@timezone WHERE id=@id`
+        ).run({ ...fields, id: existing.id });
+        return res.json(db.prepare('SELECT * FROM cities WHERE id = ?').get(existing.id));
+      } catch (err) {
+        if (!String(err.message).includes('UNIQUE')) throw err;
+        // The new position rounds to coordinates already saved as a regular
+        // city (e.g. standing exactly where "Istanbul" is pinned). Drop the
+        // separate live pin — showing the real saved city is better than a
+        // near-duplicate "My Location" card right next to it.
+        db.prepare('DELETE FROM cities WHERE id = ?').run(existing.id);
+        const collision = db
+          .prepare('SELECT * FROM cities WHERE user_id = ? AND ROUND(latitude,2) = ROUND(?,2) AND ROUND(longitude,2) = ROUND(?,2)')
+          .get(req.user.id, latitude, longitude);
+        return res.json(collision);
+      }
+    }
+    // else: first time ever — fall through to the normal insert below.
+  }
+
+  const max = db
+    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM cities WHERE user_id = ?')
+    .get(req.user.id);
+
+  const city = {
+    id: uuidv4(),
+    user_id: req.user.id,
+    ...fields,
     is_current_location: is_current_location ? 1 : 0,
     sort_order: max.m + 1,
   };

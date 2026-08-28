@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { listCities, getWeather, cacheWeather, readCachedWeather } from '../../lib/api';
 import { labelKey, iconFor, skyFor } from '../../lib/weatherCodes';
 import { round, relativeTime } from '../../lib/format';
+import { setLastOpenedCity } from '../../lib/lastOpened';
+import useAuthStore from '../../store/authStore';
 import WeatherIcon from '../../components/WeatherIcon';
 import HourlyStrip from './HourlyStrip';
 import DailyList from './DailyList';
@@ -13,6 +15,7 @@ export default function WeatherView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const userId = useAuthStore((s) => s.user?.id);
 
   const [city, setCity] = useState(null);
   const [data, setData] = useState(null);
@@ -34,6 +37,7 @@ export default function WeatherView() {
           return;
         }
         setCity(found);
+        setLastOpenedCity(userId, found.id);
 
         try {
           const fresh = await getWeather(found.latitude, found.longitude);
@@ -57,7 +61,7 @@ export default function WeatherView() {
         setLoading(false);
       }
     },
-    [id, navigate]
+    [id, navigate, userId]
   );
 
   useEffect(() => {
@@ -127,7 +131,9 @@ export default function WeatherView() {
         </button>
         {scrolled && (
           <div className="text-center">
-            <p className="text-sm font-semibold leading-tight">{city?.name}</p>
+            <p className="text-sm font-semibold leading-tight">
+              {city?.is_current_location ? t('cities.myLocation') : city?.name}
+            </p>
             <p className="text-xs text-white/70">
               {round(current?.temperature_2m)}° · {t(labelKey(code))}
             </p>
@@ -141,8 +147,10 @@ export default function WeatherView() {
       <div className="mx-auto w-full max-w-2xl px-4 pb-16">
         {/* Hero */}
         <div className="flex flex-col items-center pb-6 pt-4 text-center">
-          <h1 className="text-[26px] font-medium tracking-tight">{city?.name}</h1>
-          {city?.admin1 && city.admin1 !== city.name && (
+          <h1 className="text-[26px] font-medium tracking-tight">
+            {city?.is_current_location ? t('cities.myLocation') : city?.name}
+          </h1>
+          {!city?.is_current_location && city?.admin1 && city.admin1 !== city.name && (
             <p className="text-sm text-white/70">
               {city.admin1}
               {city.country ? `, ${city.country}` : ''}
