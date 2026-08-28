@@ -171,6 +171,11 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > mobile/android/app/release.keystore
 
+      - name: Verify decoded keystore (temporary debug — hash only, never the secret)
+        run: |
+          ls -la mobile/android/app/release.keystore
+          sha256sum mobile/android/app/release.keystore
+
       - name: Build signed release APK
         working-directory: mobile/android
         env:
