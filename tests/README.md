@@ -1,10 +1,12 @@
 # Tests
 
-Four suites. All run against a **real** stack — real `quarc-auth`, real backend,
-real Open-Meteo — because the interesting failures live in the seams between
-them, not inside any one module. None use mocks, except live GPS, which
-Puppeteer mocks at the browser level (`page.setGeolocation` /
-`overridePermissions`) — there's no honest way to fake being in a real place.
+Five suites. All run against a **real** stack — real `quarc-auth`, real backend,
+real Open-Meteo, real GitHub Releases API — because the interesting failures
+live in the seams between them, not inside any one module. None use mocks,
+except live GPS (Puppeteer mocks at the browser level — no honest way to fake
+being in a real place) and `window.Capacitor` (there's no real Android WebView
+here, so the update-banner suite injects a fake native bridge and lets it hit
+the real GitHub API from there).
 
 | Suite | What it covers |
 |---|---|
@@ -12,6 +14,7 @@ Puppeteer mocks at the browser level (`page.setGeolocation` /
 | `ui.test.js` | 18 checks — the built frontend in headless Chrome: login, add city, forecast render, settings, i18n, plus console/exception capture |
 | `location-api.test.js` | 6 checks — the current-location pin is upserted in place rather than duplicated on every move, is always sorted first, and collapses cleanly if it ends up exactly where a saved city already is |
 | `location-ui.test.js` | 10 checks — the app's landing priority end to end: granted location wins, denied location falls back to the last-opened city, nothing available falls back to the empty list; the in-app back button never re-triggers the redirect, a genuine reload always does |
+| `update-banner.test.js` | 7 checks — the startup "a new version is available" banner (matches Quarc Music): appears automatically after login with no Settings visit, shows on every screen including the `h-screen` weather detail page, dismiss persists across navigation, the manual Settings check still works independently |
 
 Requires Node 20+ (tested on 24). An internet connection is required — the
 forecast assertions hit Open-Meteo for real.

@@ -132,7 +132,7 @@ export default function WeatherView() {
         {scrolled && (
           <div className="text-center">
             <p className="text-sm font-semibold leading-tight">
-              {city?.is_current_location && '📍 '}
+              {!!city?.is_current_location && '📍 '}
               {city?.name}
             </p>
             <p className="text-xs text-white/70">
@@ -149,7 +149,10 @@ export default function WeatherView() {
         {/* Hero */}
         <div className="flex flex-col items-center pb-6 pt-4 text-center">
           <h1 className="flex items-center gap-1.5 text-[26px] font-medium tracking-tight">
-            {city?.is_current_location && (
+            {/* !! coerces to a real boolean — is_current_location comes back
+                from SQLite as the integer 0/1, and `{0 && <X/>}` in JSX
+                renders the literal "0" as text instead of nothing. */}
+            {!!city?.is_current_location && (
               <span aria-label={t('cities.myLocation')} title={t('cities.myLocation')} className="text-lg">
                 📍
               </span>

@@ -35,7 +35,10 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
             {/* A small live-location marker instead of replacing the real
                 place name — "Cankurtaran" is more useful than a generic
                 "My Location" label once we actually know where that is. */}
-            {city.is_current_location && (
+            {/* !! coerces to a real boolean — is_current_location comes back
+                from SQLite as the integer 0/1, and `{0 && <X/>}` in JSX
+                renders the literal "0" as text instead of nothing. */}
+            {!!city.is_current_location && (
               <span aria-label={t('cities.myLocation')} title={t('cities.myLocation')} className="text-sm">
                 📍
               </span>

@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './store/authStore';
 import usePrefsStore from './store/prefsStore';
+import useUpdateStore from './store/updateStore';
+import UpdateBanner from './components/UpdateBanner';
 import Login from './pages/Login/Login';
 import Home from './pages/Cities/Home';
 import AddCity from './pages/Cities/AddCity';
@@ -10,11 +12,25 @@ import Settings from './pages/Settings/Settings';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore();
+  const ensureChecked = useUpdateStore((s) => s.ensureChecked);
+  const update = useUpdateStore((s) => (s.dismissed ? null : s.update));
+  const dismiss = useUpdateStore((s) => s.dismiss);
+
+  useEffect(() => {
+    if (user) ensureChecked();
+  }, [user, ensureChecked]);
+
   if (loading) {
     return <div className="flex h-screen items-center justify-center bg-slate-900 text-white/70">Loading…</div>;
   }
   if (!user) return <Navigate to="/login" replace />;
-  return children;
+
+  return (
+    <>
+      <UpdateBanner update={update} onDismiss={dismiss} />
+      {children}
+    </>
+  );
 }
 
 export default function App() {
