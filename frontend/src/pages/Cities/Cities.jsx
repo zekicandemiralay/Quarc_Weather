@@ -31,12 +31,18 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
     >
       <button onClick={onOpen} className="flex w-full items-start justify-between p-4 text-left text-white">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xl font-medium leading-tight">
-            {city.is_current_location ? t('cities.myLocation') : city.name}
+          <p className="flex items-center gap-1 truncate text-xl font-medium leading-tight">
+            {/* A small live-location marker instead of replacing the real
+                place name — "Cankurtaran" is more useful than a generic
+                "My Location" label once we actually know where that is. */}
+            {city.is_current_location && (
+              <span aria-label={t('cities.myLocation')} title={t('cities.myLocation')} className="text-sm">
+                📍
+              </span>
+            )}
+            <span className="truncate">{city.name}</span>
           </p>
-          <p className="truncate text-xs text-white/75">
-            {city.is_current_location ? city.name : localTime}
-          </p>
+          <p className="truncate text-xs text-white/75">{localTime}</p>
           <p className="mt-6 truncate text-sm text-white/90">
             {city.error ? '—' : t(labelKey(code))}
           </p>
@@ -117,8 +123,7 @@ export default function Cities() {
   }, [load]);
 
   async function handleRemove(city) {
-    const label = city.is_current_location ? t('cities.myLocation') : city.name;
-    if (!window.confirm(t('cities.removeConfirm', { name: label }))) return;
+    if (!window.confirm(t('cities.removeConfirm', { name: city.name }))) return;
     setCities((prev) => prev.filter((c) => c.id !== city.id));
     try {
       await deleteCity(city.id);

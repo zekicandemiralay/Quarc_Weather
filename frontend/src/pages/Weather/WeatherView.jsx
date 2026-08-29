@@ -132,7 +132,8 @@ export default function WeatherView() {
         {scrolled && (
           <div className="text-center">
             <p className="text-sm font-semibold leading-tight">
-              {city?.is_current_location ? t('cities.myLocation') : city?.name}
+              {city?.is_current_location && '📍 '}
+              {city?.name}
             </p>
             <p className="text-xs text-white/70">
               {round(current?.temperature_2m)}° · {t(labelKey(code))}
@@ -147,10 +148,15 @@ export default function WeatherView() {
       <div className="mx-auto w-full max-w-2xl px-4 pb-16">
         {/* Hero */}
         <div className="flex flex-col items-center pb-6 pt-4 text-center">
-          <h1 className="text-[26px] font-medium tracking-tight">
-            {city?.is_current_location ? t('cities.myLocation') : city?.name}
+          <h1 className="flex items-center gap-1.5 text-[26px] font-medium tracking-tight">
+            {city?.is_current_location && (
+              <span aria-label={t('cities.myLocation')} title={t('cities.myLocation')} className="text-lg">
+                📍
+              </span>
+            )}
+            {city?.name}
           </h1>
-          {!city?.is_current_location && city?.admin1 && city.admin1 !== city.name && (
+          {city?.admin1 && city.admin1 !== city.name && (
             <p className="text-sm text-white/70">
               {city.admin1}
               {city.country ? `, ${city.country}` : ''}

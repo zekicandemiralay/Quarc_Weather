@@ -60,6 +60,7 @@ export default function AddCity() {
         longitude: place.longitude,
         timezone: place.timezone,
         is_current_location: isCurrentLocation,
+        language: place.language,
       });
       navigate('/');
     } catch (err) {
@@ -69,10 +70,10 @@ export default function AddCity() {
   }
 
   async function handleUseLocation() {
-    if (!navigator.geolocation) {
-      setError(t('cities.locationUnavailable'));
-      return;
-    }
+    // getCurrentPositionSafe picks the right path itself (native Capacitor
+    // plugin on Android, browser API everywhere else) — no need to
+    // pre-check navigator.geolocation here, and doing so would be wrong on
+    // Android where that's not necessarily the path actually used.
     setBusy(true);
     const coords = await getCurrentPositionSafe({ timeout: 10000 });
     if (!coords) {
@@ -83,7 +84,7 @@ export default function AddCity() {
       setError(t('cities.locationUnavailable'));
       return;
     }
-    handleAdd(currentLocationPayload(coords), true);
+    handleAdd(currentLocationPayload(coords, i18n.language), true);
   }
 
   return (

@@ -4,13 +4,35 @@
 // shape, and should stay in sync if either ever changes.
 
 /**
- * Wraps navigator.geolocation in a Promise that never rejects — it resolves
- * `null` for every failure mode (no API, permission denied, timeout, no
- * fix), so callers can treat "no location" as a plain falsy value instead
- * of a try/catch. A hard timeout is enforced here too, independent of the
- * browser's own, so a stuck GPS fix can't hang the caller indefinitely.
+ * Wraps geolocation in a Promise that never rejects — it resolves `null` for
+ * every failure mode (no API, permission denied, timeout, no fix), so
+ * callers can treat "no location" as a plain falsy value instead of a
+ * try/catch.
+ *
+ * On Android, this goes through the native @capacitor/geolocation plugin
+ * rather than the WebView's own navigator.geolocation. A plain WebView call
+ * is unreliable there even with the manifest permissions declared — Android
+ * additionally requires the app to drive the runtime permission dialog
+ * itself (checkPermissions/requestPermissions), which raw navigator.* has no
+ * way to trigger. Web, PWA, and desktop (Tauri) all still use the standard
+ * browser API, which works fine in those contexts.
  */
-export function getCurrentPositionSafe({ timeout = 8000 } = {}) {
+export async function getCurrentPositionSafe({ timeout = 8000 } = {}) {
+  const isNative = window?.Capacitor?.isNativePlatform?.();
+  const Geo = window?.Capacitor?.Plugins?.Geolocation;
+
+  if (isNative && Geo) {
+    try {
+      const perm = await Geo.requestPermissions();
+      const granted = perm?.location === 'granted' || perm?.coarseLocation === 'granted';
+      if (!granted) return null;
+      const pos = await Geo.getCurrentPosition({ timeout, enableHighAccuracy: false });
+      return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+    } catch {
+      return null;
+    }
+  }
+
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
       resolve(null);
@@ -24,6 +46,8 @@ export function getCurrentPositionSafe({ timeout = 8000 } = {}) {
       resolve(value);
     };
 
+    // A hard timeout independent of the browser's own, so a stuck GPS fix
+    // can't hang the caller indefinitely.
     const guard = setTimeout(() => done(null), timeout);
 
     navigator.geolocation.getCurrentPosition(
@@ -41,18 +65,19 @@ export function getCurrentPositionSafe({ timeout = 8000 } = {}) {
 }
 
 /**
- * The payload the backend expects for a live-location save. Coordinates are
- * used as a plain, honest label — Open-Meteo has no reverse-geocoding
- * endpoint, so anything fancier (e.g. searching the geocoder for a nearby
- * name) risks showing an unrelated place instead of where the user actually
- * is. The UI never shows this string anyway; is_current_location renders as
- * "My Location" everywhere it's displayed.
+ * The payload the backend expects for a live-location save. The coordinate
+ * string is only a fallback label — the backend attempts a real reverse
+ * geocode (nearest place name) server-side and uses that instead whenever it
+ * succeeds; this is what's shown if that lookup is unavailable (offline,
+ * upstream down) so the pin is never blank. `language` steers which
+ * language the resolved name comes back in, where the place has one.
  */
-export function currentLocationPayload({ latitude, longitude }) {
+export function currentLocationPayload({ latitude, longitude }, language = 'en') {
   return {
     name: `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`,
     latitude,
     longitude,
     is_current_location: true,
+    language,
   };
 }

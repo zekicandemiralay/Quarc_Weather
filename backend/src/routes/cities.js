@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db');
+const { reverseGeocode } = require('../services/reverseGeocode');
 
 // GET /api/cities — the signed-in user's saved list. My Location, if present,
 // is always pinned first regardless of manual sort order — the app's landing
@@ -15,8 +16,23 @@ router.get('/', (req, res) => {
 
 // POST /api/cities — save a city from a geocoder result, or move the user's
 // live-location pin to a new position.
-router.post('/', (req, res) => {
-  const { name, country, country_code, admin1, latitude, longitude, timezone, is_current_location } = req.body || {};
+//
+// Wrapped in try/catch and forwarded to next(err): this handler is async
+// (the reverse-geocode lookup needs to be awaited), and unlike a synchronous
+// handler, Express 4 does not automatically catch a rejected promise or a
+// throw inside one — without this, an unexpected DB error below would hang
+// the request instead of reaching the error middleware in index.js.
+router.post('/', async (req, res, next) => {
+  try {
+    await handleSaveCity(req, res);
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function handleSaveCity(req, res) {
+  const { name, country, country_code, admin1, latitude, longitude, timezone, is_current_location, language } =
+    req.body || {};
 
   if (!name || typeof latitude !== 'number' || typeof longitude !== 'number') {
     return res.status(400).json({ error: 'name, latitude and longitude are required' });
@@ -35,6 +51,19 @@ router.post('/', (req, res) => {
     longitude,
     timezone: timezone ? String(timezone).slice(0, 64) : null,
   };
+
+  // The frontend sends bare coordinates as a placeholder name for a live
+  // location — resolve a real nearest-place name here instead. Never lets a
+  // failed lookup (offline, upstream down) block saving the pin; the
+  // coordinate placeholder stands in when that happens.
+  if (is_current_location) {
+    const resolved = await reverseGeocode(latitude, longitude, { language: language || 'en' });
+    if (resolved) {
+      fields.name = resolved.name.slice(0, 120);
+      fields.admin1 = resolved.admin1 ? resolved.admin1.slice(0, 120) : null;
+      fields.country = resolved.country ? resolved.country.slice(0, 120) : fields.country;
+    }
+  }
 
   // There is at most one "My Location" row per user. Update it in place
   // instead of inserting a new one each time — otherwise every app open in a
@@ -97,7 +126,7 @@ router.post('/', (req, res) => {
   }
 
   res.status(201).json(db.prepare('SELECT * FROM cities WHERE id = ?').get(city.id));
-});
+}
 
 // DELETE /api/cities/:id
 router.delete('/:id', (req, res) => {

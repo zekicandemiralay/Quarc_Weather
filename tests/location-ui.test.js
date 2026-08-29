@@ -80,21 +80,24 @@ async function resetServerState(page) {
       return path;
     });
 
-    await step('the landing screen shows "My Location" and real weather', async () => {
+    await step('the landing screen shows a real resolved place name, not raw coordinates', async () => {
       const txt = await page.evaluate(() => document.body.innerText);
-      assert(/My Location/.test(txt), 'header does not say My Location');
+      assert(!/41\.0/.test(txt), `still showing raw coordinates: ${txt.slice(0, 80)}`);
+      assert(/Istanbul/i.test(txt), `no recognizable Istanbul-area name found: ${txt.slice(0, 80)}`);
       assert(/\d+°/.test(txt), 'no temperature shown');
-      return 'confirmed';
+      return 'confirmed — a real place name is shown, not "My Location" or coordinates';
     });
 
-    await step('My Location was saved to the city list (single pinned row)', async () => {
+    await step('My Location was saved to the city list with a real resolved name (single pinned row)', async () => {
       const cities = await page.evaluate(() =>
         fetch('/api/cities', { credentials: 'include' }).then((r) => r.json())
       );
       const pins = cities.filter((c) => c.is_current_location);
       assert(pins.length === 1, `expected 1 pinned row, found ${pins.length}`);
       assert(Math.abs(pins[0].latitude - 41.0082) < 0.01, `latitude mismatch: ${pins[0].latitude}`);
-      return `1 pinned row at ${pins[0].latitude}, ${pins[0].longitude}`;
+      assert(pins[0].name !== '41.008, 28.978', `reverse geocode did not resolve — still raw coords: ${pins[0].name}`);
+      assert(pins[0].admin1 && /istanbul/i.test(pins[0].admin1), `unexpected admin1: ${pins[0].admin1}`);
+      return `1 pinned row: "${pins[0].name}", ${pins[0].admin1}, ${pins[0].country}`;
     });
 
     await step('the in-app back button shows My Location pinned first, no reorder arrows on it', async () => {
@@ -103,10 +106,23 @@ async function resetServerState(page) {
       // "opening the app" again). The back button is client-side routing and
       // must NOT re-trigger it, or the list would be unreachable.
       await page.click('header button');
-      await page.waitForFunction(() => window.location.pathname === '/', { timeout: 10000 });
-      await sleep(1500);
+      await page.waitForFunction(() => !!document.querySelector('button[aria-label="Add city"]'), { timeout: 15000 });
+      await page.waitForFunction(() => /\d+°/.test(document.body.innerText), { timeout: 15000 });
       const txt = await page.evaluate(() => document.body.innerText);
-      assert(/My Location/.test(txt), 'list does not show My Location');
+      // The list card shows the resolved place name + a 📍 marker + local
+      // time — it deliberately does NOT repeat admin1/country the way the
+      // detail page's subtitle does, so "Istanbul" itself isn't expected
+      // here; check for the actual suburb name plus the marker instead.
+      assert(/Cankurtaran/i.test(txt), `list does not show the resolved place name: ${txt.slice(0, 150)}`);
+      assert(txt.includes('📍'), `list is missing the live-location marker: ${txt.slice(0, 150)}`);
+      assert(!/41\.0/.test(txt), `list still shows raw coordinates: ${txt.slice(0, 150)}`);
+      // aria-label text isn't rendered content, so check the DOM directly
+      // rather than innerText (which only shows the visible "↑"/"↓" glyphs).
+      const hasMoveButtons = await page.evaluate(() => {
+        const firstCard = document.querySelector('ul > li');
+        return !!firstCard?.querySelector('button[aria-label="Move up"], button[aria-label="Move down"]');
+      });
+      assert(!hasMoveButtons, 'reorder arrows should be hidden for the pinned card');
       await page.screenshot({ path: `${SHOTS}/2-list-with-pin.png` });
       return 'shown';
     });

@@ -1,6 +1,7 @@
 import { listCities, addCity } from './api';
 import { getCurrentPositionSafe, currentLocationPayload } from './geolocation';
 import { getLastOpenedCity } from './lastOpened';
+import i18n from '../i18n';
 
 /**
  * Decides where the app should land on open, in priority order:
@@ -20,7 +21,7 @@ export async function resolveLandingCityId(userId) {
   const coords = await getCurrentPositionSafe();
   if (coords) {
     try {
-      const city = await addCity(currentLocationPayload(coords));
+      const city = await addCity(currentLocationPayload(coords, i18n.language));
       return city.id;
     } catch {
       /* offline, server error — fall through to last-opened */

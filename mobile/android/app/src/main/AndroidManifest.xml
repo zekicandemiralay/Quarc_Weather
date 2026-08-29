@@ -33,4 +33,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- For the current-location landing screen. Coarse alone is enough for
+         weather (city-level accuracy); fine is requested too since Android
+         treats them as one runtime permission group and a WebView's
+         navigator.geolocation is unreliable without both declared. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>
