@@ -17,6 +17,9 @@ login across every device — the same account as Quarc Music and Quarc Notes.
 - Offline support — the last successful forecast for each city is cached locally and
   shown with an "as of" timestamp when the network is gone
 - Android APK with in-app updates — download from [Releases](https://github.com/zekicandemiralay/Quarc_Weather/releases/latest)
+- Android home-screen widget — refreshes itself in the background every ~45 min via
+  a native WorkManager job, independent of the app being open; offered automatically
+  the first time the app shows real weather, via Android's requestPinAppWidget prompt
 - Desktop app — native installers for Windows, macOS, and Linux built with Tauri
 - PWA — add to your home screen on iOS/Android
 

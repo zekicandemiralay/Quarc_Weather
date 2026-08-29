@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { apiUrl } from '../lib/apiUrl';
+import { syncWidgetSession, clearWidgetSession } from '../lib/widgetBridge';
 
 const useAuthStore = create((set, get) => ({
   user: JSON.parse(localStorage.getItem('quarc_user') || 'null'),
@@ -19,6 +20,7 @@ const useAuthStore = create((set, get) => ({
     const user = await res.json();
     localStorage.setItem('quarc_user', JSON.stringify(user));
     set({ user, loading: false });
+    syncWidgetSession();
     return user;
   },
 
@@ -26,6 +28,7 @@ const useAuthStore = create((set, get) => ({
     await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
     localStorage.removeItem('quarc_user');
     set({ user: null, loading: false });
+    clearWidgetSession();
   },
 
   async checkSession() {
@@ -38,6 +41,10 @@ const useAuthStore = create((set, get) => ({
         const user = await res.json();
         localStorage.setItem('quarc_user', JSON.stringify(user));
         set({ user, loading: false });
+        // Covers the common case too, not just a fresh login — most app
+        // opens are "already signed in", and the widget's stored token can
+        // go stale (rotated, revoked) between sessions just like any cookie.
+        syncWidgetSession();
       } else {
         localStorage.removeItem('quarc_user');
         set({ user: null, loading: false });

@@ -1,6 +1,6 @@
 # Tests
 
-Five suites. All run against a **real** stack — real `quarc-auth`, real backend,
+Six suites. All run against a **real** stack — real `quarc-auth`, real backend,
 real Open-Meteo, real GitHub Releases API — because the interesting failures
 live in the seams between them, not inside any one module. None use mocks,
 except live GPS (Puppeteer mocks at the browser level — no honest way to fake
@@ -15,6 +15,16 @@ the real GitHub API from there).
 | `location-api.test.js` | 6 checks — the current-location pin is upserted in place rather than duplicated on every move, is always sorted first, and collapses cleanly if it ends up exactly where a saved city already is |
 | `location-ui.test.js` | 10 checks — the app's landing priority end to end: granted location wins, denied location falls back to the last-opened city, nothing available falls back to the empty list; the in-app back button never re-triggers the redirect, a genuine reload always does |
 | `update-banner.test.js` | 7 checks — the startup "a new version is available" banner (matches Quarc Music): appears automatically after login with no Settings visit, shows on every screen including the `h-screen` weather detail page, dismiss persists across navigation, the manual Settings check still works independently |
+| `widget-api.test.js` | 5 checks — the exact HTTP shape the native Android widget's `HttpURLConnection` call sends (a bare `Cookie: token=X` header, no browser fetch semantics), confirmed to authenticate correctly and return 401 (not a crash) for a missing/garbage token; every JSON field `WeatherWidgetWorker.java` parses is confirmed present in a real response |
+
+**The native widget code itself (`mobile/android/.../Weather Widget*.java`,
+`WidgetBridgePlugin.java`) has no local test** — there's no Android emulator in
+this environment, so it's verified by: (1) careful manual review, (2) every
+`R.id`/`R.layout`/`R.string` reference cross-checked against the actual XML
+declarations (a mismatch there is a real compile error a review can miss), and
+(3) the CI `build-android` job's Gradle compile as the authoritative check.
+`widget-api.test.js` above is what *can* be verified locally — the server-side
+contract the native code depends on.
 
 Requires Node 20+ (tested on 24). An internet connection is required — the
 forecast assertions hit Open-Meteo for real.

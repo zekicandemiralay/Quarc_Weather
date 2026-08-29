@@ -5,6 +5,7 @@ import { listCities, getWeather, cacheWeather, readCachedWeather } from '../../l
 import { labelKey, iconFor, skyFor } from '../../lib/weatherCodes';
 import { round, relativeTime } from '../../lib/format';
 import { setLastOpenedCity } from '../../lib/lastOpened';
+import { offerWidgetPin } from '../../lib/widgetBridge';
 import useAuthStore from '../../store/authStore';
 import WeatherIcon from '../../components/WeatherIcon';
 import HourlyStrip from './HourlyStrip';
@@ -44,6 +45,11 @@ export default function WeatherView() {
           setData(fresh);
           setStale(null);
           cacheWeather(found.id, fresh);
+          // First moment real, live weather has actually been shown — the
+          // natural point to offer the home-screen widget, rather than
+          // immediately on login before the user has seen the app do
+          // anything. offerWidgetPin() itself only ever asks once.
+          offerWidgetPin();
         } catch (err) {
           // Offline or upstream down — fall back to the last good payload so
           // the screen still shows something useful.

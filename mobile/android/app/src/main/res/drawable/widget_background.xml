@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matches the app's clear-sky gradient card so the widget reads as part
+     of the same app rather than a generic system tile. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="20dp" />
+    <gradient
+        android:angle="270"
+        android:startColor="#3B82F6"
+        android:centerColor="#6BA3D6"
+        android:endColor="#A8C8E5" />
+</shape>

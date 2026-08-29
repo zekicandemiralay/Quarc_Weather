@@ -4,4 +4,7 @@
     <string name="title_activity_main">Quarc Weather</string>
     <string name="package_name">com.quarc.weather</string>
     <string name="custom_url_scheme">com.quarc.weather</string>
+    <string name="widget_description">Current conditions for your top city, refreshed in the background</string>
+    <string name="widget_signed_out">Open Quarc Weather to sign in</string>
+    <string name="widget_loading">Tap to open Quarc Weather</string>
 </resources>
