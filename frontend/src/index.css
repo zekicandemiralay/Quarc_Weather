@@ -83,3 +83,162 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Weather background effects (WeatherEffects.jsx). Particle counts and
+   durations are deliberately modest — this runs on Android WebView and
+   older hardware too, not just a desktop browser. */
+
+.weather-raindrop {
+  position: absolute;
+  top: -10vh;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.8));
+  border-radius: 2px;
+  animation-name: weather-rain-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes weather-rain-fall {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(115vh);
+    opacity: 0.4;
+  }
+}
+
+.weather-snowflake {
+  position: absolute;
+  top: -6vh;
+  background: #fff;
+  border-radius: 50%;
+  animation-name: weather-snow-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes weather-snow-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(24px, 112vh) rotate(180deg);
+    opacity: 0.5;
+  }
+}
+
+.weather-star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  animation-name: weather-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+@keyframes weather-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+.weather-fog-band {
+  position: absolute;
+  left: -20%;
+  width: 140%;
+  height: 12%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation-name: weather-fog-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes weather-fog-drift {
+  from {
+    transform: translateX(-8%);
+  }
+  to {
+    transform: translateX(8%);
+  }
+}
+
+.weather-cloud {
+  position: absolute;
+  left: -30%;
+  width: 55%;
+  height: 8%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.55), transparent 70%);
+  animation-name: weather-cloud-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes weather-cloud-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(220vw);
+  }
+}
+
+.weather-sun-glow {
+  position: absolute;
+  top: -15%;
+  right: -10%;
+  width: 60vw;
+  height: 60vw;
+  max-width: 420px;
+  max-height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), transparent 70%);
+  animation: weather-sun-pulse 6s ease-in-out infinite;
+}
+@keyframes weather-sun-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.06);
+  }
+}
+
+.weather-lightning {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  animation: weather-lightning-flash 9s ease-out infinite;
+}
+@keyframes weather-lightning-flash {
+  0%,
+  92%,
+  100% {
+    opacity: 0;
+  }
+  93% {
+    opacity: 0.55;
+  }
+  94% {
+    opacity: 0.05;
+  }
+  95% {
+    opacity: 0.4;
+  }
+  96% {
+    opacity: 0;
+  }
+}

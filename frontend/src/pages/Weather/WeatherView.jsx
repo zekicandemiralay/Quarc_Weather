@@ -2,12 +2,13 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { listCities, getWeather, cacheWeather, readCachedWeather } from '../../lib/api';
-import { labelKey, iconFor, skyFor } from '../../lib/weatherCodes';
+import { labelKey, iconFor, skyFor, skyBucketFor } from '../../lib/weatherCodes';
 import { round, relativeTime } from '../../lib/format';
 import { setLastOpenedCity } from '../../lib/lastOpened';
 import { offerWidgetPin } from '../../lib/widgetBridge';
 import useAuthStore from '../../store/authStore';
 import WeatherIcon from '../../components/WeatherIcon';
+import WeatherEffects from '../../components/WeatherEffects';
 import HourlyStrip from './HourlyStrip';
 import DailyList from './DailyList';
 import DetailGrid from './DetailGrid';
@@ -87,6 +88,7 @@ export default function WeatherView() {
   const current = data?.current;
   const isDay = current?.is_day === 1;
   const code = current?.weather_code ?? 3;
+  const skyMood = skyBucketFor(code, current?.temperature_2m);
 
   // Drive the gradient through CSS variables so it cross-fades on change.
   useEffect(() => {
@@ -126,6 +128,8 @@ export default function WeatherView() {
       onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 140)}
       className="sky h-screen overflow-y-auto text-white"
     >
+      {current && <WeatherEffects sky={skyMood} isDay={isDay} />}
+
       {/* Compact header that fades in once the hero scrolls away. */}
       <header
         className={`safe-top sticky top-0 z-20 flex items-center justify-between px-4 py-3 transition-colors ${

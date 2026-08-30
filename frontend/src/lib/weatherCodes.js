@@ -94,13 +94,23 @@ export function iconFor(code, isDay = true) {
 }
 
 /**
- * The three-stop gradient behind a city screen.
+ * Which of the 8 SKY moods a code/temperature combination resolves to.
  * `hot` overrides clear-sky blue once it's genuinely scorching, which is the
- * one case where Apple's app also shifts to warm tones.
+ * one case where Apple's app also shifts to warm tones. Exposed on its own
+ * (not just baked into skyFor) so other consumers — the animated background
+ * particle layer — can key off the same mood without duplicating the
+ * hot-override rule.
+ */
+export function skyBucketFor(code, tempC = null) {
+  const { sky } = describe(code);
+  return sky === 'clear' && tempC !== null && tempC >= 32 ? 'hot' : sky;
+}
+
+/**
+ * The three-stop gradient behind a city screen.
  */
 export function skyFor(code, isDay = true, tempC = null) {
-  const { sky } = describe(code);
-  const bucket = sky === 'clear' && tempC !== null && tempC >= 32 ? 'hot' : sky;
+  const bucket = skyBucketFor(code, tempC);
   return SKY[bucket][isDay ? 'day' : 'night'];
 }
 

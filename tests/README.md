@@ -1,6 +1,6 @@
 # Tests
 
-Seven suites. All run against a **real** stack — real `quarc-auth`, real backend,
+Eight suites. All run against a **real** stack — real `quarc-auth`, real backend,
 real Open-Meteo, real GitHub Releases API — because the interesting failures
 live in the seams between them, not inside any one module. None use mocks,
 except live GPS (Puppeteer mocks at the browser level — no honest way to fake
@@ -17,6 +17,7 @@ the real GitHub API from there).
 | `update-banner.test.js` | 7 checks — the startup "a new version is available" banner (matches Quarc Music): appears automatically after login with no Settings visit, shows on every screen including the `h-screen` weather detail page, dismiss persists across navigation, the manual Settings check still works independently |
 | `widget-api.test.js` | 6 checks — the exact HTTP shape the native Android widget's `HttpURLConnection` call sends (a bare `Cookie: token=X` header, no browser fetch semantics), confirmed to authenticate correctly and return 401 (not a crash) for a missing/garbage token; every JSON field `WeatherWidgetWorker.java` parses is confirmed present in a real response, including the `next_hours` array behind the widget's hourly strip; a dedicated Istanbul check proves `next_hours[0]` lands on the city's real current hour, not a server-timezone-shifted one |
 | `timezone.test.js` | 4 checks — the app is viewed with the browser's timezone emulated to `America/New_York` while showing Istanbul (a ~7-9h gap that can't coincidentally cancel out), proving the hourly strip's "Now" cell, the following hour, and sunrise are all genuinely computed in the *city's* timezone rather than silently re-interpreted in the viewer's |
+| `weather-effects.test.js` | 10 checks — the animated background particle layer (WeatherEffects.jsx). Intercepts the real `/api/weather` response and substitutes a synthetic `weather_code`/`is_day`/`temperature_2m` for each of the 8 sky moods in turn (real weather right now is whatever it is), asserting the right particles render and no others; also confirms `prefers-reduced-motion` clamps every particle's animation to ~0 |
 
 **The native widget code itself (`mobile/android/.../Weather Widget*.java`,
 `WidgetBridgePlugin.java`) has no local test** — there's no Android emulator in
@@ -100,6 +101,19 @@ node timezone.test.js
 ```
 
 Screenshots land in `tests/shots-timezone/`.
+
+### 6. Weather effects suite
+
+Same running frontend as the UI suite — no extra setup:
+
+```bash
+cd tests
+node weather-effects.test.js
+```
+
+Screenshots land in `tests/shots-effects/`, one per sky mood — useful for
+actually looking at how the rain/snow/stars/fog/clouds/sun-glow/lightning
+read against each gradient.
 
 ---
 
