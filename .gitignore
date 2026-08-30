@@ -10,6 +10,8 @@ mobile/android/.gradle/
 mobile/android/local.properties
 mobile/*.keystore
 mobile/*.password.txt
+mobile/ios/
+mobile/signing/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 backup_*/
