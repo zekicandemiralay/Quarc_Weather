@@ -88,6 +88,41 @@ function assert(cond, msg) {
     return '400';
   });
 
+  await check('GET /api/prefs defaults the daily briefing to off, 08:00', async () => {
+    // Fresh user, never touched — proves the DEFAULTS object and the
+    // ALTER TABLE migration both actually apply to a brand new row.
+    const r = await fetch(`${BASE}/api/prefs`, { headers: { Cookie: `token=${jwt.sign({ id: 'briefing-defaults-user', username: 'x', role: 'user' }, SECRET)}` } });
+    const j = await r.json();
+    assert(r.status === 200, `status ${r.status}`);
+    assert(j.daily_briefing_enabled === 0, `expected 0, got ${j.daily_briefing_enabled}`);
+    assert(j.daily_briefing_hour === 8 && j.daily_briefing_minute === 0, `expected 08:00, got ${j.daily_briefing_hour}:${j.daily_briefing_minute}`);
+    return '0, 08:00';
+  });
+
+  await check('PUT /api/prefs persists the daily briefing schedule', async () => {
+    const r = await fetch(`${BASE}/api/prefs`, {
+      ...authed,
+      method: 'PUT',
+      body: JSON.stringify({ daily_briefing_enabled: true, daily_briefing_hour: 7, daily_briefing_minute: 45 }),
+    });
+    const j = await r.json();
+    assert(r.status === 200, `status ${r.status}`);
+    assert(j.daily_briefing_enabled === 1, `expected 1, got ${j.daily_briefing_enabled}`);
+    assert(j.daily_briefing_hour === 7 && j.daily_briefing_minute === 45, `expected 07:45, got ${j.daily_briefing_hour}:${j.daily_briefing_minute}`);
+    return '1, 07:45';
+  });
+
+  await check('PUT /api/prefs rejects an out-of-range briefing hour/minute', async () => {
+    const bad1 = await fetch(`${BASE}/api/prefs`, { ...authed, method: 'PUT', body: JSON.stringify({ daily_briefing_hour: 24 }) });
+    assert(bad1.status === 400, `expected 400 for hour=24, got ${bad1.status}`);
+    const bad2 = await fetch(`${BASE}/api/prefs`, { ...authed, method: 'PUT', body: JSON.stringify({ daily_briefing_minute: -1 }) });
+    assert(bad2.status === 400, `expected 400 for minute=-1, got ${bad2.status}`);
+    return '400, 400';
+  });
+
+  // Turn it back off so it doesn't linger set for whatever runs next.
+  await fetch(`${BASE}/api/prefs`, { ...authed, method: 'PUT', body: JSON.stringify({ daily_briefing_enabled: false }) });
+
   // Put units back so the forecast assertions below read in Celsius.
   await fetch(`${BASE}/api/prefs`, { ...authed, method: 'PUT', body: JSON.stringify({ units: 'metric', language: 'en' }) });
 

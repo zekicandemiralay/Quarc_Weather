@@ -25,6 +25,9 @@ login across every device — the same account as Quarc Music and Quarc Notes.
 - Android home-screen widget — refreshes itself in the background every ~45 min via
   a native WorkManager job, independent of the app being open; offered automatically
   the first time the app shows real weather, via Android's requestPinAppWidget prompt
+- Android daily briefing notification — an optional "good morning" summary (temperature,
+  condition, hi/lo, and a heads-up if rain's coming) at a time you pick in Settings,
+  delivered independently of the app being open
 - Desktop app — native installers for Windows, macOS, and Linux built with Tauri
 - PWA — add to your home screen on iOS/Android
 

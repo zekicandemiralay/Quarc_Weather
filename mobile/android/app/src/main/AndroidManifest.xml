@@ -51,4 +51,9 @@
          navigator.geolocation is unreliable without both declared. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Android 13+ (API 33) requires this as a runtime-requested permission
+         for any notification to show at all; harmless to declare on older
+         versions, where it's granted automatically at install. Backs the
+         daily briefing notification (DailyBriefingWorker). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

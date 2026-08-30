@@ -1,6 +1,6 @@
 # Tests
 
-Nine suites. All run against a **real** stack — real `quarc-auth`, real backend,
+Ten suites. All run against a **real** stack — real `quarc-auth`, real backend,
 real Open-Meteo, real GitHub Releases API — because the interesting failures
 live in the seams between them, not inside any one module. None use mocks,
 except live GPS (Puppeteer mocks at the browser level — no honest way to fake
@@ -19,15 +19,18 @@ the real GitHub API from there).
 | `timezone.test.js` | 4 checks — the app is viewed with the browser's timezone emulated to `America/New_York` while showing Istanbul (a ~7-9h gap that can't coincidentally cancel out), proving the hourly strip's "Now" cell, the following hour, and sunrise are all genuinely computed in the *city's* timezone rather than silently re-interpreted in the viewer's |
 | `weather-effects.test.js` | 10 checks — the animated background particle layer (WeatherEffects.jsx). Intercepts the real `/api/weather` response and substitutes a synthetic `weather_code`/`is_day`/`temperature_2m` for each of the 8 sky moods in turn (real weather right now is whatever it is), asserting the right particles render and no others; also confirms `prefers-reduced-motion` clamps every particle's animation to ~0 |
 | `radar.test.js` | 5 checks — the precipitation radar card (RadarMap.jsx) against the real RainViewer + Esri tile services, no mocks: collapsed by default with zero map/tile requests until tapped, expanding actually mounts Leaflet and loads real basemap tiles (all 200), radar frames load and the play/pause control works, collapsing and re-expanding tears down and remounts without leaking errors |
+| `daily-briefing.test.js` | 7 checks — the Settings UI for the daily briefing notification: the time picker starts disabled while off, enabling it both enables the picker and persists to the server, changing the time persists the new hour/minute, a reload shows the persisted state, disabling it again persists, and no console errors from calling into the native bridge on a platform that doesn't have it (web has no `window.Capacitor`, so it must no-op cleanly). The native side (NotificationBridgePlugin, DailyBriefingWorker) has no WebView here to test against — verified the same way the widget is, see below |
 
-**The native widget code itself (`mobile/android/.../Weather Widget*.java`,
-`WidgetBridgePlugin.java`) has no local test** — there's no Android emulator in
-this environment, so it's verified by: (1) careful manual review, (2) every
-`R.id`/`R.layout`/`R.string` reference cross-checked against the actual XML
-declarations (a mismatch there is a real compile error a review can miss), and
-(3) the CI `build-android` job's Gradle compile as the authoritative check.
-`widget-api.test.js` above is what *can* be verified locally — the server-side
-contract the native code depends on.
+**The native Android code itself (`WeatherWidget*.java`, `WidgetBridgePlugin.java`,
+`DailyBriefingWorker.java`, `NotificationBridgePlugin.java`) has no local
+test** — there's no Android emulator in this environment, so it's verified
+by: (1) careful manual review, (2) every `R.id`/`R.layout`/`R.string`
+reference cross-checked against the actual XML declarations (a mismatch
+there is a real compile error a review can miss), and (3) the CI
+`build-android` job's Gradle compile as the authoritative check.
+`widget-api.test.js` and `daily-briefing.test.js` above are what *can* be
+verified locally — the server-side contracts and web-platform behavior the
+native code depends on / must not break.
 
 Requires Node 20+ (tested on 24). An internet connection is required — the
 forecast assertions hit Open-Meteo for real.

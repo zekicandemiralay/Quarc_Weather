@@ -1,8 +1,18 @@
 import { create } from 'zustand';
 import { getPrefs, savePrefs } from '../lib/api';
+import { syncDailyBriefingSchedule } from '../lib/notificationBridge';
 import i18n from '../i18n';
 
-const DEFAULTS = { units: 'metric', wind_unit: 'kmh', precip_unit: 'mm', theme: 'auto', language: 'en' };
+const DEFAULTS = {
+  units: 'metric',
+  wind_unit: 'kmh',
+  precip_unit: 'mm',
+  theme: 'auto',
+  language: 'en',
+  daily_briefing_enabled: 0,
+  daily_briefing_hour: 8,
+  daily_briefing_minute: 0,
+};
 
 // Preferences live on the server so they follow the account to every device,
 // but a local copy is kept so first paint doesn't wait on a round trip.
@@ -31,6 +41,7 @@ const usePrefsStore = create((set, get) => ({
       const prefs = await getPrefs();
       persistLocal(prefs);
       if (prefs.language !== i18n.language) i18n.changeLanguage(prefs.language);
+      syncDailyBriefingSchedule(prefs);
       set({ prefs, loaded: true });
     } catch {
       set({ loaded: true }); // offline — keep the cached copy
@@ -45,6 +56,9 @@ const usePrefsStore = create((set, get) => ({
     set({ prefs: optimistic });
 
     if (patch.language) i18n.changeLanguage(patch.language);
+    if ('daily_briefing_enabled' in patch || 'daily_briefing_hour' in patch || 'daily_briefing_minute' in patch) {
+      syncDailyBriefingSchedule(optimistic);
+    }
 
     try {
       const saved = await savePrefs(patch);

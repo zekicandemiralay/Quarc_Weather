@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(UpdaterPlugin.class);
         registerPlugin(WidgetBridgePlugin.class);
+        registerPlugin(NotificationBridgePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

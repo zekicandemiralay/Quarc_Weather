@@ -53,6 +53,22 @@ function initDb() {
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // CREATE TABLE IF NOT EXISTS is a no-op on an already-existing table, so
+  // new prefs columns added after the table's first release need an actual
+  // migration — each ALTER TABLE run on its own and swallowed individually
+  // (not batched into one exec) so an already-applied migration on a
+  // returning install doesn't abort the ones after it.
+  const addColumn = (name, ddl) => {
+    try {
+      database.exec(`ALTER TABLE prefs ADD COLUMN ${name} ${ddl}`);
+    } catch (err) {
+      if (!/duplicate column name/i.test(err.message)) throw err;
+    }
+  };
+  addColumn('daily_briefing_enabled', "INTEGER NOT NULL DEFAULT 0");
+  addColumn('daily_briefing_hour', "INTEGER NOT NULL DEFAULT 8");
+  addColumn('daily_briefing_minute', "INTEGER NOT NULL DEFAULT 0");
 }
 
 module.exports = { getDb, initDb };

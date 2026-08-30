@@ -85,6 +85,31 @@ public API for third-party apps to register into at all.
 
 ---
 
+## Daily briefing notification (Android only)
+
+An optional "good morning" notification — today's temperature, condition,
+high/low, and a heads-up if rain's expected soon — at whatever time you pick.
+
+**Turning it on:** Settings → **Daily briefing** → switch **Morning
+notification** to **On** → pick a time. Android will ask for notification
+permission the first time you do this — allow it, or the briefing has
+nothing to actually notify you with.
+
+**How precise is the timing:** within about 15–30 minutes of the time you
+set, not to the exact minute — it's checked on the same kind of periodic
+background job the widget uses, not a real-time alarm.
+
+**Turning it off:** switch it back to **Off** in the same screen. Stops the
+background check entirely — no battery cost for a notification you're not
+getting.
+
+This one setting follows your account like the others (units, language) —
+turn it on on one device, and it's already configured next time you open the
+app on another Android device signed into the same account, though each
+device still needs to grant its own notification permission.
+
+---
+
 ## iPhone / iPad
 
 There's no separate iOS app. Open

@@ -136,6 +136,38 @@ export default function Settings() {
           </Row>
         </Section>
 
+        <Section title={t('settings.dailyBriefing')}>
+          <Row label={t('settings.dailyBriefingEnable')}>
+            <Segmented
+              value={prefs.daily_briefing_enabled ? 'on' : 'off'}
+              onChange={(v) => update({ daily_briefing_enabled: v === 'on' })}
+              options={[
+                { value: 'off', label: t('settings.off') },
+                { value: 'on', label: t('settings.on') },
+              ]}
+            />
+          </Row>
+          <Row label={t('settings.dailyBriefingTime')}>
+            <input
+              type="time"
+              value={`${String(prefs.daily_briefing_hour ?? 8).padStart(2, '0')}:${String(
+                prefs.daily_briefing_minute ?? 0
+              ).padStart(2, '0')}`}
+              disabled={!prefs.daily_briefing_enabled}
+              onChange={(e) => {
+                const [h, m] = e.target.value.split(':').map(Number);
+                if (Number.isFinite(h) && Number.isFinite(m)) {
+                  update({ daily_briefing_hour: h, daily_briefing_minute: m });
+                }
+              }}
+              className="rounded-lg bg-white/10 px-2 py-1 text-sm text-white [color-scheme:dark] disabled:opacity-40"
+            />
+          </Row>
+          {platform !== 'android' && (
+            <p className="px-4 pb-3 text-xs text-white/50">{t('settings.dailyBriefingAndroidOnly')}</p>
+          )}
+        </Section>
+
         <Section title={t('settings.about')}>
           <Row label={t('settings.version')}>
             <span className="text-sm text-white/60">{version || '—'}</span>
