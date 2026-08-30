@@ -47,6 +47,23 @@ public class WeatherWidgetWorker extends Worker {
     private static final String KEY_IS_DAY = "is_day";
     private static final String KEY_HI = "hi";
     private static final String KEY_LO = "lo";
+    private static final String KEY_HOURLY = "hourly_json"; // raw next_hours JSON array
+
+    private static final int[] HOUR_COL_IDS = {
+        R.id.widget_h0, R.id.widget_h1, R.id.widget_h2, R.id.widget_h3, R.id.widget_h4, R.id.widget_h5,
+    };
+    private static final int[] HOUR_TIME_IDS = {
+        R.id.widget_h0_time, R.id.widget_h1_time, R.id.widget_h2_time,
+        R.id.widget_h3_time, R.id.widget_h4_time, R.id.widget_h5_time,
+    };
+    private static final int[] HOUR_ICON_IDS = {
+        R.id.widget_h0_icon, R.id.widget_h1_icon, R.id.widget_h2_icon,
+        R.id.widget_h3_icon, R.id.widget_h4_icon, R.id.widget_h5_icon,
+    };
+    private static final int[] HOUR_TEMP_IDS = {
+        R.id.widget_h0_temp, R.id.widget_h1_temp, R.id.widget_h2_temp,
+        R.id.widget_h3_temp, R.id.widget_h4_temp, R.id.widget_h5_temp,
+    };
 
     private static final String PERIODIC_WORK_NAME = "quarc_weather_widget_refresh";
     private static final String ONE_TIME_WORK_NAME = "quarc_weather_widget_refresh_now";
@@ -125,6 +142,7 @@ public class WeatherWidgetWorker extends Worker {
     private void cacheCity(Context context, JSONObject city) {
         JSONObject current = city.optJSONObject("current");
         JSONObject today = city.optJSONObject("today");
+        JSONArray nextHours = city.optJSONArray("next_hours");
 
         SharedPreferences.Editor cache = context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE).edit();
         cache.putString(KEY_STATE, "ok");
@@ -135,6 +153,7 @@ public class WeatherWidgetWorker extends Worker {
         cache.putBoolean(KEY_IS_DAY, current == null || current.optInt("is_day", 1) == 1);
         cache.putFloat(KEY_HI, (float) (today != null ? today.optDouble("temperature_2m_max", Double.NaN) : Double.NaN));
         cache.putFloat(KEY_LO, (float) (today != null ? today.optDouble("temperature_2m_min", Double.NaN) : Double.NaN));
+        cache.putString(KEY_HOURLY, nextHours != null ? nextHours.toString() : "[]");
         cache.apply();
     }
 
@@ -171,12 +190,16 @@ public class WeatherWidgetWorker extends Worker {
             float hi = cache.getFloat(KEY_HI, Float.NaN);
             float lo = cache.getFloat(KEY_LO, Float.NaN);
 
-            views.setTextViewText(R.id.widget_city, (isPin ? "📍 " : "") + name);
+            views.setTextViewText(R.id.widget_city, name);
+            views.setViewVisibility(R.id.widget_location_icon, isPin ? View.VISIBLE : View.GONE);
             views.setTextViewText(R.id.widget_temp, formatTemp(temp));
             views.setTextViewText(R.id.widget_icon, emojiFor(code, isDay));
+            views.setTextViewText(R.id.widget_condition, labelFor(code));
             views.setTextViewText(R.id.widget_hilo, "H:" + formatTemp(hi) + "  L:" + formatTemp(lo));
             views.setViewVisibility(R.id.widget_message, View.GONE);
             views.setViewVisibility(R.id.widget_data, View.VISIBLE);
+
+            paintHourly(views, cache.getString(KEY_HOURLY, "[]"));
         } else if ("signed_out".equals(state)) {
             views.setTextViewText(R.id.widget_message, context.getString(R.string.widget_signed_out));
             views.setViewVisibility(R.id.widget_message, View.VISIBLE);
@@ -190,8 +213,91 @@ public class WeatherWidgetWorker extends Worker {
         WeatherWidgetProvider.apply(context, views);
     }
 
+    /**
+     * Fills the 6 fixed hourly-strip columns from a cached next_hours JSON
+     * array (see backend's weather.js `nextHours()`). Any column beyond what
+     * data is available gets hidden rather than left blank.
+     */
+    private static void paintHourly(RemoteViews views, String hourlyJson) {
+        JSONArray hours;
+        try {
+            hours = new JSONArray(hourlyJson);
+        } catch (Exception e) {
+            hours = new JSONArray();
+        }
+        for (int i = 0; i < HOUR_COL_IDS.length; i++) {
+            if (i >= hours.length()) {
+                views.setViewVisibility(HOUR_COL_IDS[i], View.GONE);
+                continue;
+            }
+            JSONObject h = hours.optJSONObject(i);
+            if (h == null) {
+                views.setViewVisibility(HOUR_COL_IDS[i], View.GONE);
+                continue;
+            }
+            int hCode = h.optInt("weather_code", 3);
+            boolean hIsDay = h.optInt("is_day", 1) == 1;
+            float hTemp = (float) h.optDouble("temperature_2m", Double.NaN);
+
+            views.setViewVisibility(HOUR_COL_IDS[i], View.VISIBLE);
+            views.setTextViewText(HOUR_TIME_IDS[i], wallClockTime(h.optString("time", null)));
+            views.setTextViewText(HOUR_ICON_IDS[i], emojiFor(hCode, hIsDay));
+            views.setTextViewText(HOUR_TEMP_IDS[i], formatTemp(hTemp));
+        }
+    }
+
+    /**
+     * Open-Meteo's hourly.time strings are NAIVE local wall-clock for the
+     * city's own timezone (e.g. "2026-08-30T14:00" means 14:00 in that city,
+     * regardless of what timezone this device is set to) — the backend
+     * already resolved them relative to the city's zone. Parsing this into a
+     * java.util.Date/Calendar here would silently re-interpret the digits in
+     * the DEVICE's zone and shift every hour shown, the same class of bug
+     * just fixed on the frontend. Extracting the "HH:mm" substring directly
+     * is the correct, zone-free way to read it — always 24-hour, matching
+     * the rest of the app.
+     */
+    private static String wallClockTime(String iso) {
+        if (iso == null || iso.length() < 16) return "--:--";
+        return iso.substring(11, 16);
+    }
+
     private static String formatTemp(float value) {
         return Float.isNaN(value) ? "--°" : Math.round(value) + "°";
+    }
+
+    private static String labelFor(int code) {
+        switch (code) {
+            case 0: return "Clear";
+            case 1: return "Mainly clear";
+            case 2: return "Partly cloudy";
+            case 3: return "Overcast";
+            case 45: return "Fog";
+            case 48: return "Rime fog";
+            case 51: return "Light drizzle";
+            case 53: return "Drizzle";
+            case 55: return "Heavy drizzle";
+            case 56: return "Freezing drizzle";
+            case 57: return "Heavy freezing drizzle";
+            case 61: return "Light rain";
+            case 63: return "Rain";
+            case 65: return "Heavy rain";
+            case 66: return "Freezing rain";
+            case 67: return "Heavy freezing rain";
+            case 71: return "Light snow";
+            case 73: return "Snow";
+            case 75: return "Heavy snow";
+            case 77: return "Snow grains";
+            case 80: return "Light showers";
+            case 81: return "Showers";
+            case 82: return "Violent showers";
+            case 85: return "Light snow showers";
+            case 86: return "Heavy snow showers";
+            case 95: return "Thunderstorm";
+            case 96: return "Thunderstorm with hail";
+            case 99: return "Severe thunderstorm";
+            default: return "Overcast";
+        }
     }
 
     private static String emojiFor(int code, boolean isDay) {

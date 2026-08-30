@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { round, timeIn, windDirection, aqiBand, uvBand } from '../../lib/format';
+import { round, wallClockTime, windDirection, aqiBand, uvBand } from '../../lib/format';
 
 function Tile({ label, children, wide = false }) {
   return (
@@ -65,8 +65,8 @@ function MoonDisc({ fraction, size = 44 }) {
   );
 }
 
-export default function DetailGrid({ current, currentUnits, daily, dailyUnits, air, moon, timezone }) {
-  const { t, i18n } = useTranslation();
+export default function DetailGrid({ current, currentUnits, daily, dailyUnits, air, moon }) {
+  const { t } = useTranslation();
   const d = 1; // today's index (past_days=1 shifts everything by one)
 
   const uv = daily?.uv_index_max?.[d];
@@ -102,9 +102,9 @@ export default function DetailGrid({ current, currentUnits, daily, dailyUnits, a
       </Tile>
 
       <Tile label={`🌅 ${t('details.sunrise')}`}>
-        <Big>{daily?.sunrise?.[d] ? timeIn(daily.sunrise[d], timezone, i18n.language) : '--:--'}</Big>
+        <Big>{daily?.sunrise?.[d] ? wallClockTime(daily.sunrise[d]) : '--:--'}</Big>
         <Note>
-          {t('details.sunset')}: {daily?.sunset?.[d] ? timeIn(daily.sunset[d], timezone, i18n.language) : '--:--'}
+          {t('details.sunset')}: {daily?.sunset?.[d] ? wallClockTime(daily.sunset[d]) : '--:--'}
         </Note>
       </Tile>
 

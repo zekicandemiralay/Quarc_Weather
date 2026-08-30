@@ -93,7 +93,62 @@ function rawGet(path, cookieHeader) {
     assert(c.current && 'is_day' in c.current, 'missing current.is_day');
     assert(c.today && typeof c.today.temperature_2m_max === 'number', 'missing today.temperature_2m_max');
     assert(c.today && typeof c.today.temperature_2m_min === 'number', 'missing today.temperature_2m_min');
-    return `all widget-consumed fields present: ${c.name} ${c.current.temperature_2m}°`;
+    // Fields the widget's hourly strip reads (WeatherWidgetWorker.paintHourly()).
+    assert(Array.isArray(c.next_hours), 'missing next_hours array');
+    assert(c.next_hours.length > 0 && c.next_hours.length <= 6, `expected 1-6 next_hours, got ${c.next_hours.length}`);
+    for (const h of c.next_hours) {
+      assert(typeof h.time === 'string', 'next_hours entry missing time');
+      assert(typeof h.weather_code === 'number', 'next_hours entry missing weather_code');
+      assert(typeof h.temperature_2m === 'number', 'next_hours entry missing temperature_2m');
+      assert('is_day' in h, 'next_hours entry missing is_day');
+    }
+    return `all widget-consumed fields present: ${c.name} ${c.current.temperature_2m}°, ${c.next_hours.length} next_hours`;
+  });
+
+  await step('next_hours is anchored to the CITY\'s own current hour, not the server\'s', async () => {
+    // Regression test for a real bug: next_hours used to be sliced with
+    // `new Date(iso).getTime() >= Date.now() - 1h`, which parses Open-Meteo's
+    // naive local-wall-clock strings as if they were in the SERVER's own
+    // timezone — silently shifting the "now" cell by the gap between the
+    // server's zone and the city's zone. Istanbul is used here specifically
+    // because it almost never matches a server's default zone (UTC), so this
+    // would have caught the bug regardless of where the test runner sits.
+    const jar = `token=${token}`;
+    const postBody = JSON.stringify({ name: 'Istanbul', country: 'Turkey', latitude: 41.0082, longitude: 28.9784 });
+    await new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: HOST, port: PORT, path: '/api/cities', method: 'POST',
+          headers: { Cookie: jar, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postBody) },
+        },
+        (res) => { res.on('data', () => {}); res.on('end', resolve); }
+      );
+      req.on('error', reject);
+      req.write(postBody);
+      req.end();
+    });
+
+    const r = await rawGet('/api/weather/overview', jar);
+    const cities = JSON.parse(r.body);
+    const istanbul = cities.find((c) => c.name === 'Istanbul');
+    assert(istanbul, `Istanbul not found in: ${cities.map((c) => c.name).join(', ')}`);
+    assert(istanbul.next_hours.length > 0, 'Istanbul has no next_hours');
+
+    // Ground truth: what hour is it in Istanbul RIGHT NOW, computed
+    // independently of anything the server does, using the same wall-clock
+    // (Intl + explicit timeZone) technique the fix itself uses.
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const get = (t) => parts.find((p) => p.type === t)?.value;
+    const expectedNow = `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:00`;
+
+    const firstHour = istanbul.next_hours[0].time;
+    assert(
+      firstHour === expectedNow,
+      `expected next_hours[0].time to be ${expectedNow} (Istanbul's real current hour), got ${firstHour}`
+    );
+    return `next_hours[0] = ${firstHour}, matches Istanbul's real current hour exactly`;
   });
 
   await step('empty city list returns [] cleanly (drives the widget\'s "empty" state)', async () => {

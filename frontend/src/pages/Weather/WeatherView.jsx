@@ -204,7 +204,7 @@ export default function WeatherView() {
             sunset={data?.daily?.sunset?.[todayIdx]}
           />
 
-          <DailyList daily={data?.daily} timezone={data?.timezone} currentTemp={current?.temperature_2m} />
+          <DailyList daily={data?.daily} currentTemp={current?.temperature_2m} />
 
           <DetailGrid
             current={current}
@@ -213,7 +213,6 @@ export default function WeatherView() {
             dailyUnits={data?.daily_units}
             air={data?.air_quality}
             moon={data?.moon}
-            timezone={data?.timezone}
           />
 
           <p className="pt-2 text-center text-[11px] text-white/50">

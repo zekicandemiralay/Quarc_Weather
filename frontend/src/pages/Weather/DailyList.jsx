@@ -1,14 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import WeatherIcon from '../../components/WeatherIcon';
 import { iconFor } from '../../lib/weatherCodes';
-import { round, weekdayIn, ratio } from '../../lib/format';
+import { round, weekdayFor, ratio } from '../../lib/format';
 
 /**
  * 10-day list. Each row's temperature bar is positioned against the *range of
  * the whole period*, not its own min/max — that's what makes a cold Thursday
  * visibly sit to the left of a warm Saturday.
  */
-export default function DailyList({ daily, timezone, currentTemp }) {
+export default function DailyList({ daily, currentTemp }) {
   const { t, i18n } = useTranslation();
   if (!daily?.time?.length) return null;
 
@@ -43,7 +43,7 @@ export default function DailyList({ daily, timezone, currentTemp }) {
           return (
             <li key={iso} className="flex items-center gap-3 py-2.5">
               <span className="w-11 shrink-0 text-sm font-medium text-white">
-                {i === 0 ? t('weather.today') : weekdayIn(iso, timezone, i18n.language)}
+                {i === 0 ? t('weather.today') : weekdayFor(iso, i18n.language)}
               </span>
 
               <div className="flex w-11 shrink-0 items-center gap-1">

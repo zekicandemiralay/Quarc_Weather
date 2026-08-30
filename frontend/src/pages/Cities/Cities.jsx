@@ -3,24 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getOverview, deleteCity, reorderCities } from '../../lib/api';
 import { labelKey, iconFor, gradientCss } from '../../lib/weatherCodes';
-import { round } from '../../lib/format';
+import { round, nowInTimezone } from '../../lib/format';
 import WeatherIcon from '../../components/WeatherIcon';
 
 function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) {
   const code = city.current?.weather_code ?? city.today?.weather_code ?? 3;
   const isDay = city.current?.is_day === 1;
 
-  const localTime = (() => {
-    try {
-      return new Intl.DateTimeFormat(i18n.language, {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: city.timezone,
-      }).format(new Date());
-    } catch {
-      return '';
-    }
-  })();
+  const localTime = nowInTimezone(city.timezone, i18n.language);
 
   return (
     <li

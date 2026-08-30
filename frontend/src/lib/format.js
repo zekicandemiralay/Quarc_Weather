@@ -7,30 +7,104 @@ export function temp(n) {
   return `${round(n)}°`;
 }
 
-/** Local time in the *city's* timezone, not the viewer's. */
-export function hourIn(iso, timezone, locale = 'en') {
+/**
+ * Open-Meteo's hourly/daily timestamps (fetched with timezone=auto) are
+ * already the target city's own wall-clock time, written with no UTC/offset
+ * marker — "2026-08-30T13:00", or just "2026-08-30" for daily-only values.
+ *
+ * Constructing a Date from a string like that and then formatting it with
+ * an explicit timeZone option double-applies a timezone conversion: Date()
+ * first reads the naive string as local to *this device*, then Intl
+ * reformats that (already-shifted) instant into the target city's zone.
+ * The two steps only cancel out when the viewer's own UTC offset happens to
+ * match the city's — which is not guaranteed, and was quietly wrong
+ * whenever it didn't (e.g. a Berlin-based viewer checking Istanbul showed
+ * every hour one hour off). Parsing the string's own digits directly
+ * sidesteps the problem entirely — nothing about "what hour does this
+ * string say" needs a timezone lookup at all; the string already says it.
+ */
+function parseWallClock(iso) {
+  const [datePart, timePart] = String(iso).split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const [h, min] = (timePart || '00:00').split(':').map(Number);
+  return { y, m, d, h: h || 0, min: min || 0 };
+}
+
+/** The hour an Open-Meteo wall-clock timestamp says, zero-padded ("13", "00"). */
+export function wallClockHour(iso) {
+  return String(parseWallClock(iso).h).padStart(2, '0');
+}
+
+/** "HH:mm" an Open-Meteo wall-clock timestamp says, verbatim — no timezone
+ *  math, see parseWallClock above for why. */
+export function wallClockTime(iso) {
+  const { h, min } = parseWallClock(iso);
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/** Weekday name for an Open-Meteo wall-clock date. Anchored at UTC purely as
+ *  a locale-aware weekday-name lookup device — the Y/M/D triplet alone
+ *  determines the weekday, so pinning it at UTC never risks shifting it
+ *  across a day boundary the way constructing a real-timezone-aware Date
+ *  from the same triplet could. */
+export function weekdayFor(iso, locale = 'en') {
+  const { y, m, d } = parseWallClock(iso);
   try {
-    return new Intl.DateTimeFormat(locale, { hour: 'numeric', timeZone: timezone }).format(new Date(iso));
+    return new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d));
   } catch {
-    return new Date(iso).getHours() + '';
+    return '';
   }
 }
 
-export function timeIn(iso, timezone, locale = 'en') {
+/**
+ * The real current time in a given IANA timezone, "HH:mm" — for "what time
+ * is it right now in city X" (Cities.jsx's card subtitle). Unlike the
+ * wallClock* helpers above, this one's input is a genuine instant (`new
+ * Date()`), so converting it via an explicit timeZone is exactly correct —
+ * there's no naive-string ambiguity to sidestep here. Always 24-hour,
+ * regardless of locale: hourCycle: 'h23' (not hour12: false) is deliberate
+ * — h23 unambiguously renders midnight as "00", where hour12: false alone
+ * has inconsistently rendered "24" on some JS engines. This app runs across
+ * several (Android WebView, Tauri's WebView2, desktop browsers), so pin the
+ * exact behavior rather than lean on a default.
+ */
+export function nowInTimezone(timezone, locale = 'en') {
   try {
-    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', timeZone: timezone }).format(
-      new Date(iso)
-    );
+    return new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone: timezone,
+    }).format(new Date());
   } catch {
     return '--:--';
   }
 }
 
-export function weekdayIn(iso, timezone, locale = 'en') {
+/**
+ * The current hour, expressed as a "YYYY-MM-DDTHH:00" wall-clock string in
+ * the given timezone — for finding "which hourly.time entry is the current
+ * one" by plain string comparison, since Open-Meteo's own entries share
+ * that exact shape and sort correctly as strings (no Date object, no
+ * naive-string reinterpretation risk — see parseWallClock above for why
+ * that matters). en-CA is used only as a reliable YYYY-MM-DD formatter;
+ * the parts are reassembled by hand so the result never depends on a
+ * locale's own separator/ordering choices.
+ */
+export function currentHourWallClock(timezone) {
   try {
-    return new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: timezone }).format(new Date(iso));
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const get = (type) => parts.find((p) => p.type === type)?.value;
+    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:00`;
   } catch {
-    return '';
+    return null;
   }
 }
 

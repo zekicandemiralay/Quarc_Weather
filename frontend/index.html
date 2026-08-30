@@ -10,6 +10,18 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="Quarc Weather — self-hosted weather for your Quarc account" />
+    <!-- Inter, loaded as a real webfont so typography looks the same across
+         Windows/Android/macOS/Linux instead of falling back to whatever each
+         OS ships (Segoe UI, Roboto, San Francisco, ...) — same family the
+         Tailwind stack already named as a fallback, just never actually
+         loaded before. Falls back gracefully to the system stack in
+         tailwind.config.js if offline. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="manifest" href="/manifest.json" />

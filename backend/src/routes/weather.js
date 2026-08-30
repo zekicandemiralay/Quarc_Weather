@@ -46,9 +46,60 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * Open-Meteo's hourly.time strings are NAIVE local wall-clock for the city's
+ * own timezone (no UTC offset marker) — e.g. "2026-08-30T14:00" means 14:00
+ * in Istanbul, regardless of what timezone this server process runs in.
+ * `new Date(iso)` would parse that string as if it were the SERVER's local
+ * time (or UTC in most container images), producing a Date instant that is
+ * off by exactly the gap between the server's zone and the city's zone —
+ * the identical class of bug fixed in the frontend's format.js. The correct
+ * comparison is string-vs-string: work out what "now" looks like as the
+ * same kind of naive wall-clock string, in the CITY's own timezone, and
+ * compare directly — no Date object, no implicit zone conversion.
+ */
+function currentHourWallClock(timezone) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const get = (type) => parts.find((p) => p.type === type)?.value;
+    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:00`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Slices N upcoming hours out of an already-fetched hourly block, starting
+ * from "now" in the city's own timezone — the same rule the frontend hourly
+ * strip uses, so a widget or any other compact consumer sees the same "now"
+ * cell the full app does. forecast_days requests past_days=1, so index 0 of
+ * hourly.time is yesterday's midnight, not "now" — this can't just start at 0.
+ */
+function nextHours(hourly, count, timezone) {
+  if (!hourly?.time?.length) return [];
+  const nowHour = currentHourWallClock(timezone);
+  const start = Math.max(0, hourly.time.findIndex((iso) => !nowHour || iso >= nowHour));
+  return hourly.time.slice(start, start + count).map((time, i) => ({
+    time,
+    weather_code: hourly.weather_code?.[start + i],
+    temperature_2m: hourly.temperature_2m?.[start + i],
+    is_day: hourly.is_day?.[start + i],
+  }));
+}
+
+/**
  * GET /api/weather/overview
  * Current conditions for every saved city at once, so the city list can render
- * in a single round trip instead of one request per row.
+ * in a single round trip instead of one request per row. Also carries a short
+ * next_hours slice per city — small enough to be free to include, and it's
+ * what lets a compact consumer like the Android widget show a short hourly
+ * strip without a second request.
  */
 router.get('/overview', async (req, res) => {
   const cities = getDb()
@@ -63,10 +114,12 @@ router.get('/overview', async (req, res) => {
     cities.map(async (city) => {
       try {
         const fc = await getForecast(city.latitude, city.longitude, opts);
+        const timezone = fc.timezone || city.timezone;
         return {
           ...city,
           current: fc.current,
           current_units: fc.current_units,
+          next_hours: nextHours(fc.hourly, 6, timezone),
           today: fc.daily
             ? {
                 weather_code: fc.daily.weather_code?.[1],
@@ -76,12 +129,12 @@ router.get('/overview', async (req, res) => {
                 sunset: fc.daily.sunset?.[1],
               }
             : null,
-          timezone: fc.timezone || city.timezone,
+          timezone,
           error: null,
         };
       } catch (err) {
         // One unreachable city must not blank the whole list.
-        return { ...city, current: null, today: null, error: err.message };
+        return { ...city, current: null, next_hours: [], today: null, error: err.message };
       }
     })
   );

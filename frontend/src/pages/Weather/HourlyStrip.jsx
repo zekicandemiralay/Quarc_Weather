@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import WeatherIcon from '../../components/WeatherIcon';
 import { iconFor } from '../../lib/weatherCodes';
-import { round, hourIn } from '../../lib/format';
+import { round, wallClockHour, wallClockTime, currentHourWallClock } from '../../lib/format';
 
 /**
  * The next 24 hours, starting from the current hour. Open-Meteo returns the
@@ -9,14 +9,17 @@ import { round, hourIn } from '../../lib/format';
  * by timestamp rather than assumed to start at index 0.
  */
 export default function HourlyStrip({ hourly, hourlyUnits, timezone, sunrise, sunset }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   if (!hourly?.time?.length) return null;
 
-  const now = Date.now();
-  const start = Math.max(
-    0,
-    hourly.time.findIndex((iso) => new Date(iso).getTime() >= now - 3600_000)
-  );
+  // Every comparison below is a plain string compare, not a Date object —
+  // hourly.time/sunrise/sunset are all Open-Meteo's own naive wall-clock
+  // strings ("YYYY-MM-DDTHH:mm") sharing one shape, so they sort correctly
+  // as strings with no timezone math needed. currentHourWallClock produces
+  // the *real* current hour in that exact shape, in the city's own
+  // timezone, so it's the one place an actual timezone conversion happens.
+  const nowHour = currentHourWallClock(timezone);
+  const start = Math.max(0, hourly.time.findIndex((iso) => !nowHour || iso >= nowHour));
   const slice = hourly.time.slice(start, start + 24);
 
   // Sunrise/sunset get inserted into the strip as their own cells, the way
@@ -32,9 +35,8 @@ export default function HourlyStrip({ hourly, hourlyUnits, timezone, sunrise, su
   }));
 
   for (const ev of events) {
-    const ts = new Date(ev.iso).getTime();
-    if (ts < new Date(slice[0]).getTime() || ts > new Date(slice[slice.length - 1]).getTime()) continue;
-    const at = cells.findIndex((c) => c.kind === 'hour' && new Date(c.iso).getTime() > ts);
+    if (!slice.length || ev.iso < slice[0] || ev.iso > slice[slice.length - 1]) continue;
+    const at = cells.findIndex((c) => c.kind === 'hour' && c.iso > ev.iso);
     if (at >= 0) cells.splice(at, 0, ev);
   }
 
@@ -46,13 +48,7 @@ export default function HourlyStrip({ hourly, hourlyUnits, timezone, sunrise, su
           if (cell.kind !== 'hour') {
             return (
               <div key={`ev-${i}`} className="flex min-w-[68px] flex-col items-center gap-2 px-2 py-1">
-                <span className="text-xs font-medium text-white/70">
-                  {new Intl.DateTimeFormat(i18n.language, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    timeZone: timezone,
-                  }).format(new Date(cell.iso))}
-                </span>
+                <span className="text-xs font-medium text-white/70">{wallClockTime(cell.iso)}</span>
                 <span className="text-2xl leading-none">{cell.kind === 'sunrise' ? '🌅' : '🌇'}</span>
                 <span className="text-xs font-semibold text-white/90">
                   {cell.kind === 'sunrise' ? t('details.sunrise') : t('details.sunset')}
@@ -73,7 +69,7 @@ export default function HourlyStrip({ hourly, hourlyUnits, timezone, sunrise, su
               }`}
             >
               <span className="text-xs font-medium text-white/70">
-                {isNow ? t('weather.now') : hourIn(cell.iso, timezone, i18n.language)}
+                {isNow ? t('weather.now') : wallClockHour(cell.iso)}
               </span>
               <WeatherIcon icon={iconFor(hourly.weather_code?.[idx], hourly.is_day?.[idx] === 1)} size={30} />
               {pop > 15 ? (

@@ -1,6 +1,6 @@
 # Tests
 
-Six suites. All run against a **real** stack — real `quarc-auth`, real backend,
+Seven suites. All run against a **real** stack — real `quarc-auth`, real backend,
 real Open-Meteo, real GitHub Releases API — because the interesting failures
 live in the seams between them, not inside any one module. None use mocks,
 except live GPS (Puppeteer mocks at the browser level — no honest way to fake
@@ -15,7 +15,8 @@ the real GitHub API from there).
 | `location-api.test.js` | 6 checks — the current-location pin is upserted in place rather than duplicated on every move, is always sorted first, and collapses cleanly if it ends up exactly where a saved city already is |
 | `location-ui.test.js` | 10 checks — the app's landing priority end to end: granted location wins, denied location falls back to the last-opened city, nothing available falls back to the empty list; the in-app back button never re-triggers the redirect, a genuine reload always does |
 | `update-banner.test.js` | 7 checks — the startup "a new version is available" banner (matches Quarc Music): appears automatically after login with no Settings visit, shows on every screen including the `h-screen` weather detail page, dismiss persists across navigation, the manual Settings check still works independently |
-| `widget-api.test.js` | 5 checks — the exact HTTP shape the native Android widget's `HttpURLConnection` call sends (a bare `Cookie: token=X` header, no browser fetch semantics), confirmed to authenticate correctly and return 401 (not a crash) for a missing/garbage token; every JSON field `WeatherWidgetWorker.java` parses is confirmed present in a real response |
+| `widget-api.test.js` | 6 checks — the exact HTTP shape the native Android widget's `HttpURLConnection` call sends (a bare `Cookie: token=X` header, no browser fetch semantics), confirmed to authenticate correctly and return 401 (not a crash) for a missing/garbage token; every JSON field `WeatherWidgetWorker.java` parses is confirmed present in a real response, including the `next_hours` array behind the widget's hourly strip; a dedicated Istanbul check proves `next_hours[0]` lands on the city's real current hour, not a server-timezone-shifted one |
+| `timezone.test.js` | 4 checks — the app is viewed with the browser's timezone emulated to `America/New_York` while showing Istanbul (a ~7-9h gap that can't coincidentally cancel out), proving the hourly strip's "Now" cell, the following hour, and sunrise are all genuinely computed in the *city's* timezone rather than silently re-interpreted in the viewer's |
 
 **The native widget code itself (`mobile/android/.../Weather Widget*.java`,
 `WidgetBridgePlugin.java`) has no local test** — there's no Android emulator in
@@ -89,13 +90,28 @@ node ui.test.js
 Screenshots land in `tests/shots/` — useful for eyeballing the sky gradients and
 the night icons, which no assertion can meaningfully check.
 
+### 5. Timezone suite
+
+Same running frontend as the UI suite (port 4173) — no extra setup:
+
+```bash
+cd tests
+node timezone.test.js
+```
+
+Screenshots land in `tests/shots-timezone/`.
+
 ---
 
 ## Notes
 
-- **Both suites reset their own state.** `ui.test.js` deletes every saved city
-  and restores default preferences after logging in, so a previous run leaving
-  the UI in Turkish with cities saved won't cascade into false failures.
+- **Every UI suite resets its own state on entry** — cities, units, and
+  language — so a previous run leaving the account in Turkish with cities
+  saved won't cascade into false failures regardless of run order.
+  `timezone.test.js` resets language/units itself too, specifically because
+  its assertions match English strings ("Now", "HOURLY", "SUNRISE") and
+  `ui.test.js`'s own Settings check deliberately leaves the account in
+  Turkish when it finishes.
 - **`api.test.js` is destructive** to the test user's city list. Point
   `DB_PATH` at a scratch database, never at production data.
 - On Windows, `npm` may skip native postinstall steps with an `allow-scripts`

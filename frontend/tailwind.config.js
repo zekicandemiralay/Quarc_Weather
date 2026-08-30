@@ -8,7 +8,11 @@ export default {
         'accent-dark': '#2563eb',
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Inter', 'system-ui', 'sans-serif'],
+        // Inter first (loaded as a real webfont in index.html) so every
+        // platform renders the same typeface; if that font hasn't loaded
+        // yet (slow/offline first paint) it falls back to each platform's
+        // own native system font rather than a generic serif/sans mismatch.
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'system-ui', 'sans-serif'],
       },
     },
   },
