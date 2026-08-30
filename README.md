@@ -6,6 +6,11 @@ login across every device — the same account as Quarc Music and Quarc Notes.
 **Features:**
 - Apple-Weather-style city screens — full-bleed sky gradient that shifts with the
   conditions and time of day, from clear-blue afternoon to overcast night
+- Animated weather backgrounds — falling rain/snow, twinkling stars, drifting fog
+  and clouds, a soft sun glow, occasional lightning in storms; respects your
+  system's reduced-motion setting
+- Precipitation radar — a collapsible map (real animated radar frames, play/pause,
+  scrubbable) centered on the city, free and keyless (RainViewer + Esri)
 - Per-user city list, saved server-side so it's there on every device you log in from
 - 24-hour hourly strip with sunrise/sunset markers inline
 - 10-day forecast with temperature range bars scaled across the whole period

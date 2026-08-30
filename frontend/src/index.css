@@ -216,6 +216,36 @@ body {
   }
 }
 
+/* RadarMap.jsx's city marker — deliberately a plain CSS dot, not one of
+   Leaflet's default marker images, which need bundler-specific asset-path
+   workarounds to not 404. */
+.radar-city-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 2px;
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.35);
+}
+
+/* Leaflet's own attribution control, restyled to sit unobtrusively over a
+   dark map instead of its default bright-white pill. */
+.leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.45) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+.leaflet-control-zoom a {
+  background: rgba(0, 0, 0, 0.45) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
 .weather-lightning {
   position: absolute;
   inset: 0;

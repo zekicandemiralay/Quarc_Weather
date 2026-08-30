@@ -132,8 +132,9 @@ phone will ask permission first.
 **Reorder or remove** — hover (or tap) a city card on the main list and use the
 arrows to move it, or **✕** to remove it.
 
-**City details** — tap any card for the full screen: hourly, 10-day, and all the
-detail tiles.
+**City details** — tap any card for the full screen: hourly, 10-day, all the
+detail tiles, and a **Precipitation radar** card near the bottom — tap it to
+expand a live, animated radar map centered on the city (free, no setup).
 
 **Units and language** — **Settings** (⚙). Switch °C/°F, wind units, mm/inch,
 theme, and English/Turkish. These save to your account, so they apply on every

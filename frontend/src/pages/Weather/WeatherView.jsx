@@ -9,6 +9,7 @@ import { offerWidgetPin } from '../../lib/widgetBridge';
 import useAuthStore from '../../store/authStore';
 import WeatherIcon from '../../components/WeatherIcon';
 import WeatherEffects from '../../components/WeatherEffects';
+import RadarMap from '../../components/RadarMap';
 import HourlyStrip from './HourlyStrip';
 import DailyList from './DailyList';
 import DetailGrid from './DetailGrid';
@@ -209,6 +210,8 @@ export default function WeatherView() {
           />
 
           <DailyList daily={data?.daily} currentTemp={current?.temperature_2m} />
+
+          {city && <RadarMap latitude={city.latitude} longitude={city.longitude} timezone={data?.timezone} />}
 
           <DetailGrid
             current={current}
