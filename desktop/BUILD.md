@@ -12,9 +12,8 @@
 
 ## Generate icons (one-time)
 
-The repo ships `desktop/logo.png` (512×512). Tauri wants at least 1024×1024 for
-the full icon set, so either supply a larger source or accept the upscale.
-From the `desktop/` folder:
+The repo ships `desktop/logo.png` (1024×1024, exported from the master
+`QuarcNet/logos/weather.svg`). From the `desktop/` folder:
 
 ```
 npx tauri icon logo.png
