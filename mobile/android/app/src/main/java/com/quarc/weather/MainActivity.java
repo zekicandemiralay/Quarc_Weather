@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(UpdaterPlugin.class);
         registerPlugin(WidgetBridgePlugin.class);
         registerPlugin(NotificationBridgePlugin.class);
+        registerPlugin(QuarcSsoPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

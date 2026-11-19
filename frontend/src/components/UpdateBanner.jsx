@@ -1,3 +1,4 @@
+import StorePromo from './StorePromo';
 import { useTranslation } from 'react-i18next';
 import { installUpdate } from '../lib/updateCheck';
 
@@ -23,6 +24,7 @@ export default function UpdateBanner({ update, onDismiss }) {
       <button onClick={handleInstall} className="underline underline-offset-2 hover:text-emerald-200">
         {t('settings.install')}
       </button>
+      <StorePromo compact />
       <button onClick={onDismiss} aria-label={t('app.close')} className="hover:text-emerald-200">
         ✕
       </button>

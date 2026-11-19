@@ -41,10 +41,10 @@ forecast assertions hit Open-Meteo for real.
 
 ### 1. Start the shared auth service
 
-`quarc-auth` lives in the Quarc_Notes repo. From there:
+`quarc-auth` lives in the Quarc_Store repo. From there:
 
 ```bash
-cd ../Quarc_Notes/auth
+cd ../Quarc_Store/auth
 npm install
 JWT_SECRET=testsecret PORT=3902 SECURE_COOKIE=false \
   ADMIN_USERNAME=zeki ADMIN_PASSWORD=testpass123 \

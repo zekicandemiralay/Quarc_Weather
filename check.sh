@@ -40,11 +40,11 @@ for svc in backend frontend; do
   fi
 done
 
-# quarc-auth lives in the Quarc_Notes repo but every app depends on it.
+# quarc-auth lives in the Quarc_Store repo but every app depends on it.
 if docker ps --format '{{.Names}}' | grep -q '^quarc-auth$'; then
   ok "quarc-auth is running (shared login)"
 else
-  bad "quarc-auth not running — logins will fail. Start it from Quarc_Notes/auth."
+  bad "quarc-auth not running — logins will fail. Start it from Quarc_Store: bash deploy.sh auth"
 fi
 
 # --- Shared network -----------------------------------------------------

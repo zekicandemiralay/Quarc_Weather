@@ -45,7 +45,7 @@ For the person who owns and runs the server.
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 - A machine that stays on, running [Tailscale](https://tailscale.com)
 - Tailscale HTTPS Certificates enabled in the admin console
-- The shared `quarc-auth` service already running (it lives in the Quarc_Notes repo
+- The shared `quarc-auth` service already running (it lives in the Quarc_Store repo
   under `auth/` — see that README). Every Quarc app depends on it for login.
 
 ---
