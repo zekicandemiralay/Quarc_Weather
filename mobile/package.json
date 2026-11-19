@@ -5,7 +5,7 @@
   "scripts": {
     "build": "npx cap sync android",
     "open": "npx cap open android",
-    "icons": "npx capacitor-assets generate --android --iconBackgroundColor \"#ffffff\" --iconBackgroundColorDark \"#ffffff\" --splashBackgroundColor \"#2563eb\" --splashBackgroundColorDark \"#0f172a\""
+    "icons": "npx capacitor-assets generate --android --iconBackgroundColor \"#ffffff\" --iconBackgroundColorDark \"#ffffff\" --splashBackgroundColor \"#2563eb\" --splashBackgroundColorDark \"#0f172a\" && node scripts/launcher-icons.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
