@@ -16,11 +16,13 @@ the injected value is the only way to prove a rare case renders correctly.
 
 CI (`.github/workflows/tests.yml`) runs them on every push and pull request:
 `unit`, `android` (Gradle build + widget unit tests), `api` (api + location-api +
-widget-api) and `browser` (ui, timezone, location-ui, weather-screen, widget-settings,
-weather-effects, daily-briefing). `radar` and
-`update-banner` also run there but only *report* — they depend on third-party
-tile servers and the rate-limited GitHub API, which can be down without the code
-being wrong.
+widget-api) and `browser` (ui, timezone, weather-screen, widget-settings,
+weather-effects, daily-briefing). `radar`, `update-banner` and `location-ui` also run
+there but only *report* — they depend on third parties (the tile servers, the
+rate-limited GitHub API, and OpenStreetMap's Nominatim, which throttles cloud IPs so
+the landing screen can arrive late from a CI runner while passing from a home
+connection), which can misbehave without the code being wrong. Run all of them
+locally before a release.
 
 | Suite | What it covers |
 |---|---|

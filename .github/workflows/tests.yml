@@ -159,6 +159,17 @@ jobs:
             curl -fsS "$url" >/dev/null || { echo "never came up: $url"; tail -n 30 "$RUNNER_TEMP"/*.log; exit 1; }
           done
 
+      # location-ui asks the backend to reverse-geocode a GPS point through OpenStreetMap's Nominatim
+      # (8 s timeout). Public Nominatim throttles cloud-datacenter IPs, which makes the landing screen
+      # arrive late and that suite fail from a GitHub runner while passing from a home connection.
+      # This records what Nominatim actually does from the runner, as a public annotation.
+      - name: Probe Nominatim from this runner
+        continue-on-error: true
+        shell: bash
+        run: |
+          result=$(curl -s -o /dev/null -m 12 -w "HTTP %{http_code} in %{time_total}s"             -A "Quarc-Weather/1.0 (self-hosted personal weather app)"             "https://nominatim.openstreetmap.org/reverse?lat=41.0082&lon=28.9784&format=jsonv2&zoom=14" || echo "no response within 12s")
+          echo "::notice title=Nominatim reverse-geocode from this runner::$result"
+
       # Suites that only need our own stack.
       - name: Browser suites
         env:
@@ -169,7 +180,7 @@ jobs:
           # (job logs need a login to read; annotations don't) — so one red run shows all the
           # broken suites and the first failing check of each, instead of just "exit code 1".
           failed=0
-          for suite in ui timezone location-ui weather-screen widget-settings weather-effects daily-briefing; do
+          for suite in ui timezone weather-screen widget-settings weather-effects daily-briefing; do
             echo "::group::$suite"
             if node "tests/$suite.test.js" 2>&1 | tee "$RUNNER_TEMP/suite-$suite.log"; then
               echo "$suite passed"
@@ -182,17 +193,24 @@ jobs:
           done
           exit $failed
 
-      # These two depend on a live third party that isn't ours to keep up —
-      # Esri/RainViewer tile servers for the radar, and the GitHub Releases API
-      # (rate-limited) for the update banner. They report, but don't block.
+      # These depend on a live third party that isn't ours to keep up, so they report but don't block:
+      #   radar         Esri / RainViewer tile servers
+      #   update-banner the GitHub Releases API (rate-limited)
+      #   location-ui   OpenStreetMap Nominatim, which throttles cloud IPs (see the probe above)
       - name: Live third-party suites (informational)
         continue-on-error: true
+        shell: bash
         env:
           NODE_PATH: ${{ runner.temp }}/pptr/node_modules:${{ github.workspace }}/backend/node_modules
         run: |
-          for suite in radar update-banner; do
+          for suite in radar update-banner location-ui; do
             echo "::group::$suite"
-            node "tests/$suite.test.js" || echo "::warning::$suite failed (live third-party service — re-run before assuming it's the code)"
+            if node "tests/$suite.test.js" 2>&1 | tee "$RUNNER_TEMP/suite-$suite.log"; then
+              echo "$suite passed"
+            else
+              detail=$(grep -E "\[FAIL\]|Error|error:" "$RUNNER_TEMP/suite-$suite.log" | head -3 | tr '\n' ' ' | cut -c1-600)
+              echo "::warning title=$suite failed (live third-party service)::${detail:-see the job log} — re-run before assuming it's the code"
+            fi
             echo "::endgroup::"
           done
 
