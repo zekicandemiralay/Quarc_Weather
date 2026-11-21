@@ -1,0 +1,198 @@
+name: Tests
+
+# Runs on every push and pull request, so a broken change is caught before it
+# is tagged and shipped to everyone's phone. (desktop-release.yml only runs on
+# a version tag — by then it's too late to find out the API test was red.)
+#
+# Four jobs, fastest first:
+#   unit      pure logic — alerts, hourly strip, formatting. No network. Seconds.
+#   android   the native code: compiles it, links every resource (so a broken
+#             layout/manifest/translation fails here, not on the release tag), and
+#             runs the JVM tests for the widget's decision logic.
+#   api       the real backend + the real Open-Meteo. No browser.
+#   browser   the built frontend in headless Chrome against the real backend and
+#             the real quarc-auth service (checked out from the Quarc_Store repo).
+#
+# The last two call live third-party services (Open-Meteo, and for the radar
+# suite RainViewer/Esri), exactly like running the suites by hand — "the
+# interesting failures live in the seams". A genuine upstream outage will turn
+# them red; re-run once before assuming it's the code.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run unit tests
+        run: node --test tests/unit.test.js
+
+  android:
+    name: Android (compile, resources, widget unit tests)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Same preparation the release build does (desktop-release.yml, build-android) —
+      # the Gradle project depends on the web bundle and on Capacitor's generated files.
+      - name: Build the frontend and sync Capacitor
+        run: |
+          npm install --prefix frontend
+          npm run build --prefix frontend
+          cp -r frontend/dist/* mobile/www/
+          npm install --prefix mobile
+          (cd mobile && npx cap sync android)
+
+      - name: Compile, link resources, run the JVM unit tests
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --console=plain :app:testDebugUnitTest :app:assembleDebug
+
+      - name: Test report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-report
+          path: mobile/android/app/build/reports/tests
+          if-no-files-found: ignore
+
+  api:
+    name: API tests (real backend + Open-Meteo)
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: testsecret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm install
+
+      - name: Start the backend (scratch database)
+        run: |
+          PORT=3904 DB_PATH="$RUNNER_TEMP/weather.db" node backend/src/index.js > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3904/api/health && exit 0
+            sleep 1
+          done
+          echo "backend never came up"; cat "$RUNNER_TEMP/backend.log"; exit 1
+
+      - name: API suite
+        run: NODE_PATH="$PWD/backend/node_modules" node tests/api.test.js
+      - name: Current-location suite
+        run: NODE_PATH="$PWD/backend/node_modules" node tests/location-api.test.js
+      - name: Widget contract suite
+        run: NODE_PATH="$PWD/backend/node_modules" node tests/widget-api.test.js
+
+      - name: Backend log (on failure)
+        if: failure()
+        run: cat "$RUNNER_TEMP/backend.log"
+
+  browser:
+    name: Browser tests (headless Chrome)
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: testsecret
+    steps:
+      - uses: actions/checkout@v4
+
+      # quarc-auth (the shared login) lives in the Quarc_Store repo. If that repo
+      # is private, add a read-only personal access token as the repository
+      # secret QUARC_STORE_TOKEN; if it is public the default token is enough.
+      - name: Check out Quarc_Store (for quarc-auth)
+        uses: actions/checkout@v4
+        with:
+          repository: zekicandemiralay/Quarc_Store
+          path: quarc-store
+          token: ${{ secrets.QUARC_STORE_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          npm install --prefix backend
+          npm install --prefix frontend
+          npm install --prefix quarc-store/auth
+          npm install --prefix "$RUNNER_TEMP/pptr" puppeteer
+
+      - name: Build the frontend
+        run: npm run build --prefix frontend
+
+      - name: Start quarc-auth, the backend and the frontend
+        run: |
+          PORT=3902 SECURE_COOKIE=false ADMIN_USERNAME=zeki ADMIN_PASSWORD=testpass123 \
+            DB_PATH="$RUNNER_TEMP/auth.db" node quarc-store/auth/src/index.js > "$RUNNER_TEMP/auth.log" 2>&1 &
+          PORT=3904 DB_PATH="$RUNNER_TEMP/weather.db" node backend/src/index.js > "$RUNNER_TEMP/backend.log" 2>&1 &
+          (cd frontend && node node_modules/vite/bin/vite.js preview --port 4173 --host 127.0.0.1 > "$RUNNER_TEMP/vite.log" 2>&1 &)
+          for url in http://127.0.0.1:3902/api/health http://127.0.0.1:3904/api/health http://127.0.0.1:4173/; do
+            for i in $(seq 1 30); do curl -fsS "$url" >/dev/null && break; sleep 1; done
+            curl -fsS "$url" >/dev/null || { echo "never came up: $url"; tail -n 30 "$RUNNER_TEMP"/*.log; exit 1; }
+          done
+
+      # Suites that only need our own stack.
+      - name: Browser suites
+        env:
+          NODE_PATH: ${{ runner.temp }}/pptr/node_modules:${{ github.workspace }}/backend/node_modules
+        run: |
+          set -e
+          for suite in ui timezone location-ui weather-screen widget-settings weather-effects daily-briefing; do
+            echo "::group::$suite"
+            node "tests/$suite.test.js"
+            echo "::endgroup::"
+          done
+
+      # These two depend on a live third party that isn't ours to keep up —
+      # Esri/RainViewer tile servers for the radar, and the GitHub Releases API
+      # (rate-limited) for the update banner. They report, but don't block.
+      - name: Live third-party suites (informational)
+        continue-on-error: true
+        env:
+          NODE_PATH: ${{ runner.temp }}/pptr/node_modules:${{ github.workspace }}/backend/node_modules
+        run: |
+          for suite in radar update-banner; do
+            echo "::group::$suite"
+            node "tests/$suite.test.js" || echo "::warning::$suite failed (live third-party service — re-run before assuming it's the code)"
+            echo "::endgroup::"
+          done
+
+      - name: Screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-screenshots
+          path: tests/shots*
+          if-no-files-found: ignore
+
+      - name: Service logs (on failure)
+        if: failure()
+        run: tail -n 60 "$RUNNER_TEMP"/*.log

@@ -12,7 +12,13 @@ login across every device — the same account as Quarc Music and Quarc Notes.
 - Precipitation radar — a collapsible map (real animated radar frames, play/pause,
   scrubbable) centered on the city, free and keyless (RainViewer + Esri)
 - Per-user city list, saved server-side so it's there on every device you log in from
-- 24-hour hourly strip with sunrise/sunset markers inline
+- Heads-up card for the next 48 hours — thunderstorms, torrential rain, gales, ice,
+  extreme heat/cold, extreme UV and dense fog, merged into time windows and marked
+  advisory or warning. These are worked out from the forecast itself (Open-Meteo has no
+  official warnings), so the card says "not official" and is hidden on offline copies
+- 24-hour hourly strip with every sunrise/sunset in the window marked inline — after
+  sunset that includes tomorrow's sunrise
+- Pull down to refresh, and "Updated 3 min ago" on every forecast
 - 10-day forecast with temperature range bars scaled across the whole period
 - Detail tiles: UV index, wind and gusts, sunrise/sunset, feels-like, precipitation,
   visibility, pressure, daylight length, moon phase, and air quality with PM2.5/PM10/O₃
@@ -20,11 +26,22 @@ login across every device — the same account as Quarc Music and Quarc Notes.
 - Metric/imperial, four wind units, mm/inch — all per-user, all synced to your account
 - English and Turkish
 - Offline support — the last successful forecast for each city is cached locally and
-  shown with an "as of" timestamp when the network is gone
+  shown with an "as of" timestamp when the network is gone, even on a cold start with
+  no signal at all
 - Android APK with in-app updates — download from [Releases](https://github.com/zekicandemiralay/Quarc_Weather/releases/latest)
 - Android home-screen widget — refreshes itself in the background every ~45 min via
   a native WorkManager job, independent of the app being open; offered automatically
   the first time the app shows real weather, via Android's requestPinAppWidget prompt
+  - **Resizes down to 2×1** and adapts to its size: a single row (icon, temperature,
+    city/condition and a few hours if there's width), a compact two-line card, or the
+    full card with the hourly strip. Layout can be left on Auto or pinned
+  - **Your own look, per widget**: Sky (the app's gradient for the current weather),
+    Dark, Light, Glass, any of 8 colours, or **Transparent** (straight onto the
+    wallpaper, with a soft text shadow), plus an opacity slider, text colour
+    (auto/light/dark) and which saved city it follows
+  - The settings screen opens when you add the widget, from the widget's "reconfigure"
+    action (Android 12+), and from **Settings → Home screen widget** in the app; its
+    preview is drawn by the same code as the widget itself
 - Android daily briefing notification — an optional "good morning" summary (temperature,
   condition, hi/lo, and a heads-up if rain's coming) at a time you pick in Settings,
   delivered independently of the app being open
@@ -172,6 +189,17 @@ See **[README_Users.md](README_Users.md)**.
 `https://quarcnet0.tail84500c.ts.net:4002` in a browser, install the Android APK,
 or install the desktop app. They log in with the same account they already use
 for Quarc Music.
+
+---
+
+## Tests
+
+Every push and pull request runs the **Tests** workflow (`.github/workflows/tests.yml`):
+pure-logic unit tests, the API suites against the real backend and Open-Meteo, and the
+browser suites in headless Chrome. See **[tests/README.md](tests/README.md)** for what each
+suite covers and how to run them locally. To let CI check out `Quarc_Store` (for the
+shared login service) when that repository is private, add a read-only token as the
+repository secret `QUARC_STORE_TOKEN`.
 
 ---
 
