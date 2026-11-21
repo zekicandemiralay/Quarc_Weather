@@ -108,6 +108,20 @@ export function currentHourWallClock(timezone) {
   }
 }
 
+/**
+ * Visibility ready to print: km for metric (the API sends metres), miles for
+ * imperial (the API sends FEET there, not metres — dividing by 1000 and
+ * calling it km, as this used to, is off by a factor of ~3 for those users).
+ * Whole numbers above 10, one decimal below — "0.4 km" matters in fog.
+ * Returns null when there's no reading.
+ */
+export function visibilityDisplay(value, unit) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  const imperial = unit === 'ft';
+  const v = imperial ? value / 5280 : value / 1000;
+  return { value: v >= 10 ? Math.round(v) : Math.round(v * 10) / 10, unit: imperial ? 'mi' : 'km' };
+}
+
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 
 export function windDirection(deg) {

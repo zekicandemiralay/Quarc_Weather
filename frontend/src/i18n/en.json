@@ -128,6 +128,32 @@
     "waning_crescent": "Waning crescent",
     "illumination": "{{percent}}% illuminated"
   },
+  "alerts": {
+    "title": "Heads-up",
+    "disclaimer": "Automated advisories worked out from the forecast — not official weather warnings.",
+    "advisory": "Advisory",
+    "warning": "Warning",
+    "now": "Now",
+    "tomorrow": "Tomorrow",
+    "types": {
+      "thunderstorm": "Thunderstorms",
+      "heavy_rain": "Heavy rain",
+      "strong_wind": "Strong wind",
+      "heavy_snow": "Heavy snow",
+      "freezing_rain": "Freezing rain",
+      "heat": "Extreme heat",
+      "cold": "Extreme cold",
+      "uv": "Extreme UV",
+      "dense_fog": "Dense fog"
+    },
+    "detail": {
+      "strong_wind": "Gusts up to {{value}} {{unit}}",
+      "heavy_rain": "Up to {{value}} {{unit}}/h",
+      "heat": "Feels like {{value}}{{unit}}",
+      "cold": "Feels like {{value}}{{unit}}",
+      "uv": "UV index up to {{value}}"
+    }
+  },
   "settings": {
     "title": "Settings",
     "units": "Units",
@@ -146,6 +172,13 @@
     "dailyBriefingEnable": "Morning notification",
     "dailyBriefingTime": "Time",
     "dailyBriefingAndroidOnly": "Only available in the Android app right now.",
+    "widget": "Home screen widget",
+    "widgetHint": "Resize the widget as small as one row, then choose what it shows, its background — including transparent — its text colour and which city it follows.",
+    "widgetNone": "There is no widget on your home screen yet.",
+    "widgetCustomize": "Customize widget",
+    "widgetAdd": "Add widget to home screen",
+    "widgetAddAnother": "Add another widget",
+    "widgetAddManual": "Your launcher can't add it for you. Long-press the home screen, open Widgets and choose Quarc Weather.",
     "off": "Off",
     "on": "On",
     "account": "Account",

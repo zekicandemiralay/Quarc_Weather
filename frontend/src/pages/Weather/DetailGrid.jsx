@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { round, wallClockTime, windDirection, aqiBand, uvBand } from '../../lib/format';
+import { round, wallClockTime, windDirection, aqiBand, uvBand, visibilityDisplay } from '../../lib/format';
 
 function Tile({ label, children, wide = false }) {
   return (
@@ -25,8 +25,13 @@ function Meter({ pct, color }) {
   );
 }
 
-/** Moon disc drawn from the illuminated fraction. */
-function MoonDisc({ fraction, size = 44 }) {
+/**
+ * Moon disc drawn from the illuminated fraction. The phase is drawn as seen
+ * from the northern hemisphere (a waxing moon lit on the right); `mirror`
+ * flips it for the southern hemisphere, where the same moon appears lit on
+ * the left.
+ */
+function MoonDisc({ fraction, size = 44, mirror = false }) {
   const waxing = fraction < 0.5;
   const illum = (1 - Math.cos(2 * Math.PI * fraction)) / 2;
   // Terminator is an ellipse whose x-radius tracks how far from half-phase we are.
@@ -34,7 +39,12 @@ function MoonDisc({ fraction, size = 44 }) {
   const lit = illum > 0.5;
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      width={size}
+      height={size}
+      style={mirror ? { transform: 'scaleX(-1)' } : undefined}
+    >
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 1} fill="#1e293b" />
       <defs>
         <clipPath id="moon-clip">
@@ -65,7 +75,7 @@ function MoonDisc({ fraction, size = 44 }) {
   );
 }
 
-export default function DetailGrid({ current, currentUnits, daily, dailyUnits, air, moon }) {
+export default function DetailGrid({ current, currentUnits, daily, dailyUnits, air, moon, latitude }) {
   const { t } = useTranslation();
   const d = 1; // today's index (past_days=1 shifts everything by one)
 
@@ -74,9 +84,10 @@ export default function DetailGrid({ current, currentUnits, daily, dailyUnits, a
   const aqiValue = air?.current?.european_aqi;
   const aqi = aqiBand(aqiValue);
 
-  // `current.visibility` is metres, straight from the current block — never
-  // read hourly[0] here: with past_days=1 that index is 24 hours ago.
-  const visibility = current?.visibility;
+  // `current.visibility` comes straight from the current block — never read
+  // hourly[0] here: with past_days=1 that index is 24 hours ago. Its unit
+  // follows the temperature unit: metres for Celsius, FEET for Fahrenheit.
+  const visibility = visibilityDisplay(current?.visibility, currentUnits?.visibility);
   const daylightH = daily?.daylight_duration?.[d] ? daily.daylight_duration[d] / 3600 : null;
 
   return (
@@ -130,8 +141,8 @@ export default function DetailGrid({ current, currentUnits, daily, dailyUnits, a
 
       <Tile label={`👁 ${t('details.visibility')}`}>
         <Big>
-          {visibility === null || visibility === undefined ? '--' : Math.round(visibility / 1000)}
-          <span className="ml-1 text-base font-normal text-white/70">km</span>
+          {visibility ? visibility.value : '--'}
+          <span className="ml-1 text-base font-normal text-white/70">{visibility?.unit}</span>
         </Big>
         <Note>
           {t('details.cloudCover')}: {round(current?.cloud_cover)}%
@@ -150,7 +161,7 @@ export default function DetailGrid({ current, currentUnits, daily, dailyUnits, a
 
       <Tile label={`🌙 ${t('details.moonPhase')}`}>
         <div className="flex items-center gap-3">
-          <MoonDisc fraction={moon?.fraction ?? 0} />
+          <MoonDisc fraction={moon?.fraction ?? 0} mirror={latitude < 0} />
           <div>
             <p className="text-sm font-semibold leading-tight text-white">{t(`moon.${moon?.phase || 'new'}`)}</p>
             <Note>{t('moon.illumination', { percent: Math.round((moon?.illumination ?? 0) * 100) })}</Note>

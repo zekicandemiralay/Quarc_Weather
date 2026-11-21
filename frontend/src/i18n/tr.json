@@ -128,6 +128,32 @@
     "waning_crescent": "Hilal (küçülen)",
     "illumination": "%{{percent}} aydınlık"
   },
+  "alerts": {
+    "title": "Hava uyarıları",
+    "disclaimer": "Tahminden otomatik olarak üretilen uyarılardır — resmî hava durumu uyarısı değildir.",
+    "advisory": "Dikkat",
+    "warning": "Uyarı",
+    "now": "Şimdi",
+    "tomorrow": "Yarın",
+    "types": {
+      "thunderstorm": "Gök gürültülü fırtına",
+      "heavy_rain": "Şiddetli yağış",
+      "strong_wind": "Kuvvetli rüzgâr",
+      "heavy_snow": "Yoğun kar yağışı",
+      "freezing_rain": "Donan yağmur (buzlanma)",
+      "heat": "Aşırı sıcak",
+      "cold": "Aşırı soğuk",
+      "uv": "Aşırı UV",
+      "dense_fog": "Yoğun sis"
+    },
+    "detail": {
+      "strong_wind": "Hamleler {{value}} {{unit}} değerine kadar",
+      "heavy_rain": "{{value}} {{unit}}/sa değerine kadar",
+      "heat": "Hissedilen {{value}}{{unit}}",
+      "cold": "Hissedilen {{value}}{{unit}}",
+      "uv": "UV indeksi {{value}} değerine kadar"
+    }
+  },
   "settings": {
     "title": "Ayarlar",
     "units": "Birimler",
@@ -146,6 +172,13 @@
     "dailyBriefingEnable": "Sabah bildirimi",
     "dailyBriefingTime": "Saat",
     "dailyBriefingAndroidOnly": "Şu anda yalnızca Android uygulamasında kullanılabilir.",
+    "widget": "Ana ekran widget'ı",
+    "widgetHint": "Widget'ı tek satıra kadar küçültebilir; neyi göstereceğini, arka planını (şeffaf dahil), yazı rengini ve hangi şehri izleyeceğini seçebilirsiniz.",
+    "widgetNone": "Ana ekranınızda henüz widget yok.",
+    "widgetCustomize": "Widget'ı özelleştir",
+    "widgetAdd": "Widget'ı ana ekrana ekle",
+    "widgetAddAnother": "Başka bir widget ekle",
+    "widgetAddManual": "Başlatıcınız widget'ı sizin yerinize ekleyemiyor. Ana ekrana uzun basın, Widget'lar'ı açın ve Quarc Hava'yı seçin.",
     "off": "Kapalı",
     "on": "Açık",
     "account": "Hesap",

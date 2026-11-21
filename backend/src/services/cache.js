@@ -19,6 +19,10 @@ function set(key, value, ttlMs) {
   store.set(key, { value, expires: Date.now() + ttlMs });
 }
 
+function del(key) {
+  store.delete(key);
+}
+
 // Wraps an async producer so concurrent callers for the same key share one
 // upstream request instead of stampeding.
 const inflight = new Map();
@@ -49,4 +53,4 @@ setInterval(() => {
   for (const [k, v] of store) if (now > v.expires) store.delete(k);
 }, 5 * 60 * 1000).unref();
 
-module.exports = { get, set, through };
+module.exports = { get, set, del, through };

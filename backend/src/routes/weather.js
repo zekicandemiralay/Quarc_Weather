@@ -3,6 +3,8 @@ const router = express.Router();
 const { getDb } = require('../db');
 const { getForecast, getAirQuality } = require('../services/openMeteo');
 const { moonPhase } = require('../services/astronomy');
+const { computeAlerts } = require('../services/alerts');
+const { currentHourWallClock } = require('../services/wallclock');
 
 function unitOpts(req) {
   const row = getDb().prepare('SELECT * FROM prefs WHERE user_id = ?').get(req.user.id);
@@ -14,65 +16,58 @@ function unitOpts(req) {
 }
 
 /**
+ * GET /api/weather?city=<id>   (preferred — one round trip, no client-side lookup)
  * GET /api/weather?lat=&lon=
  * The full bundle behind one city screen. Air quality is fetched alongside
  * but never allowed to fail the request — a missing AQI panel is far better
  * than a blank screen.
+ *
+ * With `city`, the saved city row is resolved here and returned as `city`, so
+ * the client doesn't have to fetch the whole city list before it can ask for
+ * the forecast (and can render offline from one cached payload).
+ * `refresh=1` is pull-to-refresh: bypass the cache, rate-limited server-side.
  */
 router.get('/', async (req, res) => {
-  const lat = Number(req.query.lat);
-  const lon = Number(req.query.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return res.status(400).json({ error: 'lat and lon are required' });
+  let lat;
+  let lon;
+  let city = null;
+
+  if (req.query.city) {
+    city = getDb()
+      .prepare('SELECT * FROM cities WHERE id = ? AND user_id = ?')
+      .get(String(req.query.city), req.user.id);
+    if (!city) return res.status(404).json({ error: 'City not found' });
+    lat = city.latitude;
+    lon = city.longitude;
+  } else {
+    lat = Number(req.query.lat);
+    lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({ error: 'lat and lon (or city) are required' });
+    }
   }
 
   const opts = unitOpts(req);
+  const force = req.query.refresh === '1';
 
   try {
     const [forecast, air] = await Promise.all([
-      getForecast(lat, lon, opts),
+      getForecast(lat, lon, opts, { force }),
       getAirQuality(lat, lon).catch(() => null),
     ]);
 
     res.json({
       ...forecast,
+      ...(city ? { city } : {}),
       air_quality: air,
       moon: moonPhase(),
+      alerts: computeAlerts(forecast, forecast.timezone),
       units_preference: opts,
     });
   } catch (err) {
     res.status(502).json({ error: 'Forecast unavailable', detail: err.message });
   }
 });
-
-/**
- * Open-Meteo's hourly.time strings are NAIVE local wall-clock for the city's
- * own timezone (no UTC offset marker) — e.g. "2026-08-30T14:00" means 14:00
- * in Istanbul, regardless of what timezone this server process runs in.
- * `new Date(iso)` would parse that string as if it were the SERVER's local
- * time (or UTC in most container images), producing a Date instant that is
- * off by exactly the gap between the server's zone and the city's zone —
- * the identical class of bug fixed in the frontend's format.js. The correct
- * comparison is string-vs-string: work out what "now" looks like as the
- * same kind of naive wall-clock string, in the CITY's own timezone, and
- * compare directly — no Date object, no implicit zone conversion.
- */
-function currentHourWallClock(timezone) {
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date());
-    const get = (type) => parts.find((p) => p.type === type)?.value;
-    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:00`;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Slices N upcoming hours out of an already-fetched hourly block, starting

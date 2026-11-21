@@ -13,11 +13,4 @@ function requireAuth(req, res, next) {
   }
 }
 
-function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-    next();
-  });
-}
-
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth };

@@ -258,6 +258,37 @@ function assert(cond, msg) {
     return '°F';
   });
 
+  await check('GET /api/weather?city=<id> returns the city, forecast, alerts and a fetch stamp in one call', async () => {
+    const r = await fetch(`${BASE}/api/weather?city=${cityId}`, authed);
+    const j = await r.json();
+    assert(r.status === 200, `status ${r.status}`);
+    assert(j.city?.id === cityId && j.city.name === 'Istanbul', `city block was ${JSON.stringify(j.city)}`);
+    assert(j.current && j.hourly && j.daily, 'forecast blocks missing');
+    assert(Array.isArray(j.alerts), 'alerts must always be an array (possibly empty)');
+    assert(typeof j.fetched_at === 'number' && j.fetched_at <= Date.now(), 'fetched_at missing or in the future');
+    return `${j.city.name}, ${j.alerts.length} alert(s)`;
+  });
+
+  await check('GET /api/weather?city=<id> 404s for an unknown city', async () => {
+    const r = await fetch(`${BASE}/api/weather?city=does-not-exist`, authed);
+    assert(r.status === 404, `expected 404, got ${r.status}`);
+    return '404';
+  });
+
+  await check("GET /api/weather?city=<id> 404s for another user's city (isolation)", async () => {
+    const other = jwt.sign({ id: 'user-test-2', username: 'someone', role: 'user' }, SECRET, { expiresIn: '1h' });
+    const r = await fetch(`${BASE}/api/weather?city=${cityId}`, { headers: { Cookie: `token=${other}` } });
+    assert(r.status === 404, `expected 404, got ${r.status}`);
+    return '404';
+  });
+
+  await check('refresh=1 is rate-limited: a just-fetched forecast is not re-fetched upstream', async () => {
+    const first = await (await fetch(`${BASE}/api/weather?city=${cityId}`, authed)).json();
+    const forced = await (await fetch(`${BASE}/api/weather?city=${cityId}&refresh=1`, authed)).json();
+    assert(forced.fetched_at === first.fetched_at, `fetched_at changed (${first.fetched_at} → ${forced.fetched_at}) — refresh=1 bypassed the guard`);
+    return 'same fetched_at';
+  });
+
   await check('GET /api/weather rejects a non-numeric lat', async () => {
     const r = await fetch(`${BASE}/api/weather?lat=abc&lon=29`, authed);
     assert(r.status === 400, `expected 400, got ${r.status}`);

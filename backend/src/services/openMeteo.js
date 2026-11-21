@@ -17,6 +17,7 @@ const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_TTL = 10 * 60 * 1000; // upstream model refreshes every ~15 min
 const AIR_TTL = 30 * 60 * 1000;
 const GEOCODE_TTL = 24 * 60 * 60 * 1000; // city coordinates never move
+const FORCE_MIN_AGE = 2 * 60 * 1000; // a manual refresh can't re-fetch data younger than this
 
 const CURRENT_FIELDS = [
   'temperature_2m',
@@ -115,11 +116,23 @@ async function getJson(url, params) {
 
 /**
  * Full forecast bundle for one coordinate: current + 48h hourly + 10d daily.
+ * Stamped with `fetched_at` (ms epoch) so clients can say how fresh it is.
+ *
+ * `force` is what pull-to-refresh uses: it bypasses the cache, but only when
+ * the cached copy is at least FORCE_MIN_AGE old — so a user (or a stuck
+ * client) mashing refresh can't turn this server into a hammer on Open-Meteo.
  */
-async function getForecast(lat, lon, opts = {}) {
+async function getForecast(lat, lon, opts = {}, { force = false } = {}) {
   const key = `fc:${lat.toFixed(3)}:${lon.toFixed(3)}:${opts.units}:${opts.windUnit}:${opts.precipUnit}`;
-  return cache.through(key, FORECAST_TTL, () =>
-    getJson(FORECAST_URL, {
+
+  if (force) {
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.fetched_at < FORCE_MIN_AGE) return hit;
+    cache.del(key);
+  }
+
+  return cache.through(key, FORECAST_TTL, async () => ({
+    ...(await getJson(FORECAST_URL, {
       latitude: lat,
       longitude: lon,
       current: CURRENT_FIELDS.join(','),
@@ -129,8 +142,9 @@ async function getForecast(lat, lon, opts = {}) {
       forecast_days: 10,
       past_days: 1, // lets the hourly strip show "earlier today" without a second call
       ...unitParams(opts),
-    })
-  );
+    })),
+    fetched_at: Date.now(),
+  }));
 }
 
 /**

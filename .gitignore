@@ -15,3 +15,6 @@ mobile/signing/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 backup_*/
+
+# Screenshots the browser test suites write on every run
+tests/shots*/

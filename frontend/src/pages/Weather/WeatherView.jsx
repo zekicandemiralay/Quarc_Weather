@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { listCities, getWeather, cacheWeather, readCachedWeather } from '../../lib/api';
+import { getCityWeather, cacheWeather, readCachedWeather } from '../../lib/api';
+import usePullToRefresh from '../../lib/usePullToRefresh';
 import { labelKey, iconFor, skyFor, skyBucketFor } from '../../lib/weatherCodes';
 import { round, relativeTime } from '../../lib/format';
 import { setLastOpenedCity } from '../../lib/lastOpened';
@@ -13,6 +14,12 @@ import RadarMap from '../../components/RadarMap';
 import HourlyStrip from './HourlyStrip';
 import DailyList from './DailyList';
 import DetailGrid from './DetailGrid';
+import AlertsCard from './AlertsCard';
+
+// Coming back to the app within this window doesn't re-fetch — the server only
+// refreshes its forecast every few minutes anyway, and a fetch on every tab
+// switch is wasted battery and data.
+const FOREGROUND_REFRESH_MIN_MS = 60 * 1000;
 
 export default function WeatherView() {
   const { id } = useParams();
@@ -26,45 +33,47 @@ export default function WeatherView() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
+  const pullRef = useRef(null);
+  const lastFetchRef = useRef(0);
   const [scrolled, setScrolled] = useState(false);
 
+  // One request carries both the saved city and its forecast (the server
+  // resolves the city id itself), so there's no "fetch the list, then fetch the
+  // weather" waterfall — and the single cached payload is enough to render the
+  // whole screen offline.
   const load = useCallback(
-    async (showSpinner = true) => {
-      if (showSpinner) setLoading(true);
+    async ({ spinner = true, force = false } = {}) => {
+      if (spinner) setLoading(true);
       setError('');
       try {
-        const cities = await listCities();
-        const found = cities.find((c) => c.id === id);
-        if (!found) {
+        const fresh = await getCityWeather(id, { force });
+        lastFetchRef.current = Date.now();
+        setCity(fresh.city);
+        setData(fresh);
+        setStale(null);
+        setLastOpenedCity(userId, id);
+        cacheWeather(id, fresh);
+        // First moment real, live weather has actually been shown — the
+        // natural point to offer the home-screen widget, rather than
+        // immediately on login before the user has seen the app do
+        // anything. offerWidgetPin() itself only ever asks once.
+        offerWidgetPin();
+      } catch (err) {
+        if (err.status === 404) {
+          // The city was removed (maybe on another device) — nothing to show.
           navigate('/', { replace: true });
           return;
         }
-        setCity(found);
-        setLastOpenedCity(userId, found.id);
-
-        try {
-          const fresh = await getWeather(found.latitude, found.longitude);
-          setData(fresh);
-          setStale(null);
-          cacheWeather(found.id, fresh);
-          // First moment real, live weather has actually been shown — the
-          // natural point to offer the home-screen widget, rather than
-          // immediately on login before the user has seen the app do
-          // anything. offerWidgetPin() itself only ever asks once.
-          offerWidgetPin();
-        } catch (err) {
-          // Offline or upstream down — fall back to the last good payload so
-          // the screen still shows something useful.
-          const cached = readCachedWeather(found.id);
-          if (cached) {
-            setData(cached.data);
-            setStale(cached.at);
-          } else {
-            setError(err.message);
-          }
+        // Offline or upstream down — fall back to the last good payload so
+        // the screen still shows something useful.
+        const cached = readCachedWeather(id);
+        if (cached?.data?.city) {
+          setCity(cached.data.city);
+          setData(cached.data);
+          setStale(cached.at);
+        } else {
+          setError(err.message);
         }
-      } catch (err) {
-        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -80,11 +89,15 @@ export default function WeatherView() {
   // phones, where the screen may have been backgrounded for hours.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load(false);
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastFetchRef.current < FOREGROUND_REFRESH_MIN_MS) return;
+      load({ spinner: false });
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [load]);
+
+  usePullToRefresh(scrollRef, pullRef, () => load({ spinner: false, force: true }), !!data);
 
   const current = data?.current;
   const isDay = current?.is_day === 1;
@@ -127,9 +140,33 @@ export default function WeatherView() {
     <div
       ref={scrollRef}
       onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 140)}
-      className="sky h-screen overflow-y-auto text-white"
+      className="sky h-screen overflow-y-auto overscroll-y-contain text-white"
     >
       {current && <WeatherEffects sky={skyMood} isDay={isDay} />}
+
+      {/* Pull-to-refresh indicator — positioned/animated imperatively by
+          usePullToRefresh (no React state, so pulling never re-renders the
+          animated background). Hidden until pulled. */}
+      <div
+        ref={pullRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed left-1/2 top-14 z-30 opacity-0"
+        style={{ transform: 'translate(-50%, 0px)' }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="26"
+          height="26"
+          fill="none"
+          stroke="white"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          className="rounded-full bg-black/30 p-1 backdrop-blur"
+        >
+          <path d="M21 12a9 9 0 1 1-3-6.7" />
+          <path d="M21 4v5h-5" />
+        </svg>
+      </div>
 
       {/* Compact header that fades in once the hero scrolls away. */}
       <header
@@ -201,13 +238,12 @@ export default function WeatherView() {
         </div>
 
         <div className="flex flex-col gap-3">
-          <HourlyStrip
-            hourly={data?.hourly}
-            hourlyUnits={data?.hourly_units}
-            timezone={data?.timezone}
-            sunrise={data?.daily?.sunrise?.[todayIdx]}
-            sunset={data?.daily?.sunset?.[todayIdx]}
-          />
+          {/* Alerts are computed when the forecast is fetched and describe
+              windows relative to that moment — so they're only shown for live
+              data, never for an offline copy that may be hours old. */}
+          {!stale && <AlertsCard alerts={data?.alerts} todayDate={data?.daily?.time?.[todayIdx]} />}
+
+          <HourlyStrip hourly={data?.hourly} timezone={data?.timezone} daily={data?.daily} />
 
           <DailyList daily={data?.daily} currentTemp={current?.temperature_2m} />
 
@@ -220,10 +256,12 @@ export default function WeatherView() {
             dailyUnits={data?.daily_units}
             air={data?.air_quality}
             moon={data?.moon}
+            latitude={city?.latitude}
           />
 
           <p className="pt-2 text-center text-[11px] text-white/50">
             Open-Meteo · {data?.timezone}
+            {data?.fetched_at && !stale ? ` · ${t('app.updatedAt', { time: relativeTime(data.fetched_at, i18n.language) })}` : ''}
           </p>
         </div>
       </div>

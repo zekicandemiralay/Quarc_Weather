@@ -3,8 +3,10 @@ import { apiUrl } from './apiUrl';
 async function request(path, options = {}) {
   const res = await fetch(apiUrl(path), { credentials: 'include', ...options });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Request failed (${res.status})`);
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || `Request failed (${res.status})`);
+    err.status = res.status; // lets callers tell "gone" (404) from "unreachable"
+    throw err;
   }
   return res.status === 204 ? null : res.json();
 }
@@ -25,6 +27,10 @@ export const reorderCities = (ids) => json('PUT', '/api/cities/reorder', { ids }
 
 // --- Weather ------------------------------------------------------------
 export const getWeather = (lat, lon) => request(`/api/weather?lat=${lat}&lon=${lon}`);
+// One round trip: the server resolves the saved city itself and returns it as
+// `data.city`. `force` is pull-to-refresh (the server rate-limits it).
+export const getCityWeather = (cityId, { force = false } = {}) =>
+  request(`/api/weather?city=${encodeURIComponent(cityId)}${force ? '&refresh=1' : ''}`);
 export const getOverview = () => request('/api/weather/overview');
 
 // --- Geocoding ----------------------------------------------------------
