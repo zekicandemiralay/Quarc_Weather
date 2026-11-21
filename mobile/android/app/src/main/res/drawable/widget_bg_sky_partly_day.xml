@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GENERATED from SKY.partly.day in frontend/src/lib/weatherCodes.js — the same
+     three stops the app paints behind a city screen. Edit the web palette and
+     regenerate rather than changing the colours here. angle 270 = top to bottom. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="@dimen/widget_corner_radius" />
+    <gradient
+        android:angle="270"
+        android:startColor="#3F7FC1"
+        android:centerColor="#6BA3D6"
+        android:endColor="#A8C8E5" />
+</shape>

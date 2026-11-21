@@ -1,10 +1,45 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Quarc Weather</string>
-    <string name="title_activity_main">Quarc Weather</string>
-    <string name="package_name">com.quarc.weather</string>
-    <string name="custom_url_scheme">com.quarc.weather</string>
-    <string name="widget_description">Current conditions and a 6-hour forecast for your top city, refreshed in the background</string>
+    <!-- Never translated: the launcher label must read "Quarc Weather" on every phone, and the
+         other two are identifiers. translatable="false" says so, so Android lint doesn't flag
+         them as missing from values-tr (where only the widget's own strings live). -->
+    <string name="app_name" translatable="false">Quarc Weather</string>
+    <string name="title_activity_main" translatable="false">Quarc Weather</string>
+    <string name="package_name" translatable="false">com.quarc.weather</string>
+    <string name="custom_url_scheme" translatable="false">com.quarc.weather</string>
+    <string name="widget_description">Current conditions and the next hours for your city — resizable down to one row, with your choice of background, including transparent</string>
     <string name="widget_signed_out">Open Quarc Weather to sign in</string>
     <string name="widget_loading">Tap to open Quarc Weather</string>
+    <string name="widget_no_cities">Add a city in Quarc Weather</string>
+
+    <!-- Widget settings screen -->
+    <string name="widget_config_title">Widget settings</string>
+    <string name="widget_config_preview">Preview</string>
+    <string name="widget_config_editing">Editing</string>
+    <string name="widget_config_which">Widget %1$d</string>
+    <string name="widget_config_layout">Layout</string>
+    <string name="widget_config_layout_auto">Auto</string>
+    <string name="widget_config_layout_single_row">Single row</string>
+    <string name="widget_config_layout_compact">Compact</string>
+    <string name="widget_config_layout_full">Full</string>
+    <string name="widget_config_layout_hint">Auto fits what is shown to the widget\'s size — resize the widget to see it change. Pick one of the others to keep it that way at any size.</string>
+    <string name="widget_config_background">Background</string>
+    <string name="widget_config_bg_sky">Sky</string>
+    <string name="widget_config_bg_dark">Dark</string>
+    <string name="widget_config_bg_light">Light</string>
+    <string name="widget_config_bg_glass">Glass</string>
+    <string name="widget_config_bg_color">Color</string>
+    <string name="widget_config_bg_transparent">Transparent</string>
+    <string name="widget_config_opacity">Opacity: %1$d%%</string>
+    <string name="widget_config_transparent_hint">Transparent shows your wallpaper straight through. If the text is hard to read, switch the text to Light or Dark below.</string>
+    <string name="widget_config_text">Text</string>
+    <string name="widget_config_text_auto">Auto</string>
+    <string name="widget_config_text_light">Light</string>
+    <string name="widget_config_text_dark">Dark</string>
+    <string name="widget_config_city">City</string>
+    <string name="widget_config_city_first">First in my list</string>
+    <string name="widget_config_save">Save</string>
+    <string name="widget_config_cancel">Cancel</string>
+    <string name="widget_config_no_widget">Add the widget to your home screen first, then come back to change how it looks.</string>
+    <string name="widget_config_sample_city">Istanbul</string>
 </resources>

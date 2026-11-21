@@ -2,11 +2,13 @@ package com.quarc.weather;
 
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
+import android.content.Intent;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.webkit.CookieManager;
 
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -109,5 +111,45 @@ public class WidgetBridgePlugin extends Plugin {
             }
         }
         call.resolve();
+    }
+
+    /** How many copies of the widget are on the home screen — the app's Settings uses this to
+     *  offer "Customize widget" only when there is something to customize. */
+    @PluginMethod
+    public void widgetCount(PluginCall call) {
+        AppWidgetManager mgr = AppWidgetManager.getInstance(getContext());
+        int[] ids = mgr.getAppWidgetIds(new ComponentName(getContext(), WeatherWidgetProvider.class));
+        JSObject result = new JSObject();
+        result.put("count", ids.length);
+        call.resolve(result);
+    }
+
+    /** Opens the widget's settings screen (style, background incl. transparent, layout, city). */
+    @PluginMethod
+    public void openSettings(PluginCall call) {
+        Intent intent = new Intent(getContext(), WidgetConfigActivity.class);
+        intent.putExtra(WidgetConfigActivity.EXTRA_FROM_APP, true);
+        getActivity().startActivity(intent);
+        call.resolve();
+    }
+
+    /**
+     * Asks Android to add the widget to the home screen, on demand — unlike offerPin, which
+     * is a one-time first-run nudge, this is what an explicit "Add widget" button calls.
+     * Resolves {supported:false} where the launcher can't pin widgets (the user then has to
+     * add it from the widget picker themselves).
+     */
+    @PluginMethod
+    public void requestPin(PluginCall call) {
+        boolean supported = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AppWidgetManager mgr = AppWidgetManager.getInstance(getContext());
+            if (mgr.isRequestPinAppWidgetSupported()) {
+                supported = mgr.requestPinAppWidget(new ComponentName(getContext(), WeatherWidgetProvider.class), null, null);
+            }
+        }
+        JSObject result = new JSObject();
+        result.put("supported", supported);
+        call.resolve(result);
     }
 }

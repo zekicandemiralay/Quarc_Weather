@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A plain white rounded rectangle. The renderer tints it to any solid colour with
+     ImageView.setColorFilter and sets its opacity with setImageAlpha — one shape
+     serves the dark, light, glass and custom-colour backgrounds. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="@dimen/widget_corner_radius" />
+    <solid android:color="#FFFFFFFF" />
+</shape>

@@ -1,0 +1,40 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- Only the widget's own strings are translated here. app_name is deliberately NOT
+         overridden: the launcher label must stay "Quarc Weather" on every phone. -->
+    <string name="widget_description">Şehriniz için anlık durum ve önümüzdeki saatler — tek satıra kadar küçültülebilir; şeffaf dahil arka plan seçenekleriyle</string>
+    <string name="widget_signed_out">Giriş yapmak için Quarc Hava\'yı açın</string>
+    <string name="widget_loading">Quarc Hava\'yı açmak için dokunun</string>
+    <string name="widget_no_cities">Quarc Hava\'ya bir şehir ekleyin</string>
+
+    <!-- Widget settings screen -->
+    <string name="widget_config_title">Widget ayarları</string>
+    <string name="widget_config_preview">Önizleme</string>
+    <string name="widget_config_editing">Düzenlenen</string>
+    <string name="widget_config_which">Widget %1$d</string>
+    <string name="widget_config_layout">Düzen</string>
+    <string name="widget_config_layout_auto">Otomatik</string>
+    <string name="widget_config_layout_single_row">Tek satır</string>
+    <string name="widget_config_layout_compact">Kompakt</string>
+    <string name="widget_config_layout_full">Tam</string>
+    <string name="widget_config_layout_hint">Otomatik, gösterilenleri widget\'ın boyutuna uydurur — değiştiğini görmek için widget\'ı yeniden boyutlandırın. Boyuttan bağımsız sabit kalması için diğerlerinden birini seçin.</string>
+    <string name="widget_config_background">Arka plan</string>
+    <string name="widget_config_bg_sky">Gökyüzü</string>
+    <string name="widget_config_bg_dark">Koyu</string>
+    <string name="widget_config_bg_light">Açık</string>
+    <string name="widget_config_bg_glass">Cam</string>
+    <string name="widget_config_bg_color">Renk</string>
+    <string name="widget_config_bg_transparent">Şeffaf</string>
+    <string name="widget_config_opacity">Opaklık: %%%1$d</string>
+    <string name="widget_config_transparent_hint">Şeffaf, duvar kağıdınızı olduğu gibi gösterir. Yazı okunmuyorsa aşağıdan yazıyı Açık veya Koyu yapın.</string>
+    <string name="widget_config_text">Yazı</string>
+    <string name="widget_config_text_auto">Otomatik</string>
+    <string name="widget_config_text_light">Açık</string>
+    <string name="widget_config_text_dark">Koyu</string>
+    <string name="widget_config_city">Şehir</string>
+    <string name="widget_config_city_first">Listemdeki ilk şehir</string>
+    <string name="widget_config_save">Kaydet</string>
+    <string name="widget_config_cancel">İptal</string>
+    <string name="widget_config_no_widget">Önce widget\'ı ana ekranınıza ekleyin, sonra görünümünü değiştirmek için buraya dönün.</string>
+    <string name="widget_config_sample_city">İstanbul</string>
+</resources>

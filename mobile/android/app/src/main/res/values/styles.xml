@@ -20,8 +20,22 @@
         <item name="android:background">@drawable/splash</item>
     </style>
 
+    <!-- Every text view in the weather widget. The faint shadow is what keeps the
+         text readable when the background is Transparent and the wallpaper behind it
+         is busy or bright; on a solid background it's practically invisible.
+         (Text COLOUR is not set here — WidgetRenderer sets it per the widget's style.) -->
+    <style name="WidgetText">
+        <item name="android:shadowColor">#4D000000</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">1</item>
+        <item name="android:shadowRadius">3</item>
+    </style>
+
     <!-- Hourly strip columns in the weather widget — one of these per hour,
-         stacked vertically (time / icon / temp) and laid out side by side. -->
+         stacked vertically (time / icon / temp) and laid out side by side.
+         WidgetHourColumn shares the row's width equally (the full layout);
+         WidgetHourColumnInline is a fixed-width column that sits at the right of
+         the single-row layout. -->
     <style name="WidgetHourColumn">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">wrap_content</item>
@@ -30,7 +44,14 @@
         <item name="android:gravity">center</item>
     </style>
 
-    <style name="WidgetHourTime">
+    <style name="WidgetHourColumnInline">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="WidgetHourTime" parent="WidgetText">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:fontFamily">sans-serif-medium</item>
@@ -38,19 +59,27 @@
         <item name="android:textSize">10sp</item>
     </style>
 
-    <style name="WidgetHourIcon">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">3dp</item>
-        <item name="android:textSize">15sp</item>
-    </style>
-
-    <style name="WidgetHourTemp">
+    <style name="WidgetHourIcon" parent="WidgetText">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">2dp</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="WidgetHourTemp" parent="WidgetText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">1dp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:textColor">#FFFFFF</item>
         <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- The widget settings screen: dark, to match the app. A plain framework theme
+         (no AppCompat) — the screen is built in code. -->
+    <style name="WidgetConfigTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/widget_config_background</item>
+        <item name="android:statusBarColor">@color/widget_config_background</item>
+        <item name="android:navigationBarColor">@color/widget_config_background</item>
     </style>
 </resources>

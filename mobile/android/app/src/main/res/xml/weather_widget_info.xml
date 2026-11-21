@@ -4,15 +4,27 @@
      schedule (45 min, started in onEnabled) is the real, more precise
      refresh driver. Both exist because a widget must declare *some*
      updatePeriodMillis; relying on it alone would be too coarse and
-     unreliable to call "live". -->
+     unreliable to call "live".
+
+     Size: it used to refuse to shrink below 4x3 cells (250x160dp), which is why a
+     "smallest" widget still had a lot of empty space. Now it can go down to 2x1
+     (110x40dp), starts at 4x2, and the layout adapts to whatever size it's given
+     (see WidgetLayoutSpec).
+
+     configure: the settings screen opens when the widget is added; reconfigurable
+     (Android 12+) also lets the launcher offer "reconfigure" from a long press. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="160dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="3"
+    android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
-    android:initialLayout="@layout/weather_widget"
+    android:initialLayout="@layout/weather_widget_compact"
     android:previewImage="@mipmap/ic_launcher"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
+    android:configure="com.quarc.weather.WidgetConfigActivity"
+    android:widgetFeatures="reconfigurable"
     android:description="@string/widget_description" />

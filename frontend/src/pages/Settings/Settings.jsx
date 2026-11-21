@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import useAuthStore from '../../store/authStore';
 import usePrefsStore from '../../store/prefsStore';
 import { getPlatform, getCurrentVersion, checkForUpdate, installUpdate } from '../../lib/updateCheck';
+import { getWidgetCount, openWidgetSettings, requestWidgetPin } from '../../lib/widgetBridge';
 
 function Section({ title, children }) {
   return (
@@ -39,6 +40,67 @@ function Segmented({ value, options, onChange }) {
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * Android only: the home-screen widget's look (layout, background incl. transparent, text,
+ * city) is chosen on a native screen, since the widget itself is native. This is the door to
+ * it for a widget that's already placed — and a way to add one if there isn't one yet.
+ */
+function WidgetSection({ t }) {
+  const [count, setCount] = useState(null); // null = still asking
+  const [pinNote, setPinNote] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => getWidgetCount().then((n) => alive && setCount(n));
+    refresh();
+    // Coming back from the launcher's "add widget" prompt (or from the native settings
+    // screen) should show the new state without leaving this page.
+    const onVisible = () => document.visibilityState === 'visible' && refresh();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  async function add() {
+    setPinNote('');
+    const accepted = await requestWidgetPin();
+    // Not accepted: this launcher won't add widgets for an app — say how to do it by hand.
+    if (!accepted) setPinNote(t('settings.widgetAddManual'));
+  }
+
+  return (
+    <Section title={t('settings.widget')}>
+      <div className="px-4 py-3">
+        <p className="mb-3 text-xs text-white/60">{t('settings.widgetHint')}</p>
+
+        {count === 0 && <p className="mb-3 text-xs text-white/60">{t('settings.widgetNone')}</p>}
+
+        {count > 0 && (
+          <button
+            onClick={() => openWidgetSettings()}
+            className="mb-2 w-full rounded-lg bg-accent py-2 text-sm font-semibold"
+            data-testid="widget-customize"
+          >
+            {t('settings.widgetCustomize')}
+          </button>
+        )}
+
+        <button
+          onClick={add}
+          className="w-full rounded-lg bg-white/10 py-2 text-sm font-medium"
+          data-testid="widget-add"
+        >
+          {count > 0 ? t('settings.widgetAddAnother') : t('settings.widgetAdd')}
+        </button>
+
+        {pinNote && <p className="mt-2 text-xs text-amber-300">{pinNote}</p>}
+      </div>
+    </Section>
   );
 }
 
@@ -168,6 +230,8 @@ export default function Settings() {
             <p className="px-4 pb-3 text-xs text-white/50">{t('settings.dailyBriefingAndroidOnly')}</p>
           )}
         </Section>
+
+        {platform === 'android' && <WidgetSection t={t} />}
 
         <Section title={t('settings.about')}>
           <Row label={t('settings.version')}>

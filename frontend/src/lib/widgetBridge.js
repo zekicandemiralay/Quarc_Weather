@@ -34,3 +34,33 @@ export function clearWidgetSession() {
 export function offerWidgetPin() {
   bridge()?.offerPin().catch(() => {});
 }
+
+/** How many copies of the widget are on the home screen (0 when unknown or not Android). */
+export async function getWidgetCount() {
+  const plugin = bridge();
+  if (!plugin?.widgetCount) return 0;
+  try {
+    return Number((await plugin.widgetCount())?.count) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Opens the native widget settings screen: layout, background (incl. transparent), text, city. */
+export function openWidgetSettings() {
+  return bridge()?.openSettings?.().catch(() => {});
+}
+
+/**
+ * Asks Android to add the widget now. Resolves true if the launcher accepted the request,
+ * false if it can't add widgets itself (the user then adds it from the widget picker).
+ */
+export async function requestWidgetPin() {
+  const plugin = bridge();
+  if (!plugin?.requestPin) return false;
+  try {
+    return !!(await plugin.requestPin())?.supported;
+  } catch {
+    return false;
+  }
+}

@@ -33,6 +33,19 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- The widget's settings screen. The launcher starts it when a widget is added (and
+             for "reconfigure" on Android 12+), so it must be exported and answer the
+             APPWIDGET_CONFIGURE action. It is also opened from the app's Settings. -->
+        <activity
+            android:name=".WidgetConfigActivity"
+            android:exported="true"
+            android:label="@string/widget_config_title"
+            android:theme="@style/WidgetConfigTheme">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".WeatherWidgetProvider"
             android:exported="false"

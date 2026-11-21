@@ -1,28 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- RemoteViews only supports a limited set of views (no ConstraintLayout,
-     no custom views, no dynamic/scrolling lists without a separate
-     RemoteViewsService) — kept to plain LinearLayout/TextView throughout,
-     with the hourly strip as 6 fixed columns rather than a real list. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- FULL layout: city, big temperature, condition + high/low, and the hourly strip.
+     (WidgetLayoutSpec decides which of the three weather_widget*.xml layouts is used.)
+
+     RemoteViews only supports a limited set of views (no ConstraintLayout, no custom
+     views, no plain View) — so this is FrameLayout/LinearLayout/TextView/ImageView only,
+     with the hourly strip as 6 fixed columns rather than a real list. Every id below is
+     shared with the other two layouts; WidgetRenderer sets sizes, colours and visibility
+     at runtime, and setting an id a layout doesn't have is a harmless no-op. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@drawable/widget_background"
-    android:paddingLeft="16dp"
-    android:paddingRight="16dp"
-    android:paddingTop="12dp"
-    android:paddingBottom="10dp">
+    android:layout_height="match_parent">
 
-    <!-- Shown for "signed_out" / "loading" states; hidden once real data
-         is available. -->
+    <!-- Background layers. widget_bg is swapped/tinted/faded by the renderer (sky gradient,
+         or the white shape tinted to a solid colour); hidden entirely for Transparent. -->
+    <ImageView
+        android:id="@+id/widget_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_bg_solid" />
+
+    <ImageView
+        android:id="@+id/widget_border"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_border"
+        android:visibility="gone" />
+
+    <!-- Shown for "signed out" / "loading" / "no cities"; hidden once real data is available. -->
     <TextView
         android:id="@+id/widget_message"
+        style="@style/WidgetText"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:fontFamily="sans-serif-medium"
         android:gravity="center"
+        android:padding="12dp"
         android:textColor="#FFFFFF"
         android:textSize="13sp"
         android:visibility="visible" />
@@ -31,67 +48,76 @@
         android:id="@+id/widget_data"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:gravity="center_vertical"
         android:orientation="vertical"
+        android:paddingLeft="14dp"
+        android:paddingTop="8dp"
+        android:paddingRight="14dp"
+        android:paddingBottom="8dp"
         android:visibility="gone">
 
         <!-- City name row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <ImageView
                 android:id="@+id/widget_location_icon"
                 android:layout_width="12dp"
                 android:layout_height="12dp"
                 android:layout_marginEnd="4dp"
+                android:importantForAccessibility="no"
                 android:src="@drawable/ic_widget_location"
                 android:visibility="gone" />
 
             <TextView
                 android:id="@+id/widget_city"
+                style="@style/WidgetText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:ellipsize="end"
                 android:fontFamily="sans-serif-medium"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <!-- Temperature + condition row -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/widget_temp"
+                style="@style/WidgetText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-light"
+                android:includeFontPadding="false"
                 android:textColor="#FFFFFF"
                 android:textSize="42sp" />
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:layout_marginStart="10dp"
+                android:layout_weight="1"
                 android:orientation="vertical">
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
                     <TextView
                         android:id="@+id/widget_icon"
+                        style="@style/WidgetText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginEnd="4dp"
@@ -99,69 +125,137 @@
 
                     <TextView
                         android:id="@+id/widget_condition"
+                        style="@style/WidgetText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:ellipsize="end"
                         android:fontFamily="sans-serif"
-                        android:textColor="#F2FFFFFF"
-                        android:textSize="12sp"
                         android:maxLines="1"
-                        android:ellipsize="end" />
+                        android:textColor="#F2FFFFFF"
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/widget_hilo"
+                    style="@style/WidgetText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="1dp"
                     android:fontFamily="sans-serif"
                     android:textColor="#CCFFFFFF"
                     android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Hourly strip — 6 fixed columns, evenly spaced. -->
+        <!-- Hourly strip — up to 6 columns; the renderer hides the ones that don't fit. -->
         <LinearLayout
+            android:id="@+id/widget_hourly"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:orientation="horizontal">
 
-            <LinearLayout android:id="@+id/widget_h0" style="@style/WidgetHourColumn">
-                <TextView android:id="@+id/widget_h0_time" style="@style/WidgetHourTime" />
-                <TextView android:id="@+id/widget_h0_icon" style="@style/WidgetHourIcon" />
-                <TextView android:id="@+id/widget_h0_temp" style="@style/WidgetHourTemp" />
+            <LinearLayout
+                android:id="@+id/widget_h0"
+                style="@style/WidgetHourColumn">
+
+                <TextView
+                    android:id="@+id/widget_h0_time"
+                    style="@style/WidgetHourTime" />
+
+                <TextView
+                    android:id="@+id/widget_h0_icon"
+                    style="@style/WidgetHourIcon" />
+
+                <TextView
+                    android:id="@+id/widget_h0_temp"
+                    style="@style/WidgetHourTemp" />
             </LinearLayout>
 
-            <LinearLayout android:id="@+id/widget_h1" style="@style/WidgetHourColumn">
-                <TextView android:id="@+id/widget_h1_time" style="@style/WidgetHourTime" />
-                <TextView android:id="@+id/widget_h1_icon" style="@style/WidgetHourIcon" />
-                <TextView android:id="@+id/widget_h1_temp" style="@style/WidgetHourTemp" />
+            <LinearLayout
+                android:id="@+id/widget_h1"
+                style="@style/WidgetHourColumn">
+
+                <TextView
+                    android:id="@+id/widget_h1_time"
+                    style="@style/WidgetHourTime" />
+
+                <TextView
+                    android:id="@+id/widget_h1_icon"
+                    style="@style/WidgetHourIcon" />
+
+                <TextView
+                    android:id="@+id/widget_h1_temp"
+                    style="@style/WidgetHourTemp" />
             </LinearLayout>
 
-            <LinearLayout android:id="@+id/widget_h2" style="@style/WidgetHourColumn">
-                <TextView android:id="@+id/widget_h2_time" style="@style/WidgetHourTime" />
-                <TextView android:id="@+id/widget_h2_icon" style="@style/WidgetHourIcon" />
-                <TextView android:id="@+id/widget_h2_temp" style="@style/WidgetHourTemp" />
+            <LinearLayout
+                android:id="@+id/widget_h2"
+                style="@style/WidgetHourColumn">
+
+                <TextView
+                    android:id="@+id/widget_h2_time"
+                    style="@style/WidgetHourTime" />
+
+                <TextView
+                    android:id="@+id/widget_h2_icon"
+                    style="@style/WidgetHourIcon" />
+
+                <TextView
+                    android:id="@+id/widget_h2_temp"
+                    style="@style/WidgetHourTemp" />
             </LinearLayout>
 
-            <LinearLayout android:id="@+id/widget_h3" style="@style/WidgetHourColumn">
-                <TextView android:id="@+id/widget_h3_time" style="@style/WidgetHourTime" />
-                <TextView android:id="@+id/widget_h3_icon" style="@style/WidgetHourIcon" />
-                <TextView android:id="@+id/widget_h3_temp" style="@style/WidgetHourTemp" />
+            <LinearLayout
+                android:id="@+id/widget_h3"
+                style="@style/WidgetHourColumn">
+
+                <TextView
+                    android:id="@+id/widget_h3_time"
+                    style="@style/WidgetHourTime" />
+
+                <TextView
+                    android:id="@+id/widget_h3_icon"
+                    style="@style/WidgetHourIcon" />
+
+                <TextView
+                    android:id="@+id/widget_h3_temp"
+                    style="@style/WidgetHourTemp" />
             </LinearLayout>
 
-            <LinearLayout android:id="@+id/widget_h4" style="@style/WidgetHourColumn">
-                <TextView android:id="@+id/widget_h4_time" style="@style/WidgetHourTime" />
-                <TextView android:id="@+id/widget_h4_icon" style="@style/WidgetHourIcon" />
-                <TextView android:id="@+id/widget_h4_temp" style="@style/WidgetHourTemp" />
+            <LinearLayout
+                android:id="@+id/widget_h4"
+                style="@style/WidgetHourColumn">
+
+                <TextView
+                    android:id="@+id/widget_h4_time"
+                    style="@style/WidgetHourTime" />
+
+                <TextView
+                    android:id="@+id/widget_h4_icon"
+                    style="@style/WidgetHourIcon" />
+
+                <TextView
+                    android:id="@+id/widget_h4_temp"
+                    style="@style/WidgetHourTemp" />
             </LinearLayout>
 
-            <LinearLayout android:id="@+id/widget_h5" style="@style/WidgetHourColumn">
-                <TextView android:id="@+id/widget_h5_time" style="@style/WidgetHourTime" />
-                <TextView android:id="@+id/widget_h5_icon" style="@style/WidgetHourIcon" />
-                <TextView android:id="@+id/widget_h5_temp" style="@style/WidgetHourTemp" />
+            <LinearLayout
+                android:id="@+id/widget_h5"
+                style="@style/WidgetHourColumn">
+
+                <TextView
+                    android:id="@+id/widget_h5_time"
+                    style="@style/WidgetHourTime" />
+
+                <TextView
+                    android:id="@+id/widget_h5_icon"
+                    style="@style/WidgetHourIcon" />
+
+                <TextView
+                    android:id="@+id/widget_h5_temp"
+                    style="@style/WidgetHourTemp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-
-</LinearLayout>
+</FrameLayout>
