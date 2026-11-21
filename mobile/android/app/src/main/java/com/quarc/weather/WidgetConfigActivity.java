@@ -162,10 +162,11 @@ public class WidgetConfigActivity extends Activity {
         body.addView(section(getString(R.string.widget_config_layout)));
         layoutChips = new Chips(new String[] {
             getString(R.string.widget_config_layout_auto),
+            getString(R.string.widget_config_layout_minimal),
             getString(R.string.widget_config_layout_single_row),
             getString(R.string.widget_config_layout_compact),
             getString(R.string.widget_config_layout_full),
-        }, 2, index -> {
+        }, 3, index -> {
             settings.layout = WidgetSettings.Layout.values()[index];
             refreshPreview();
         });

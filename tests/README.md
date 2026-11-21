@@ -45,8 +45,8 @@ dev environment), so it is verified in layers instead:
 
 1. **The decision logic is plain Java with no `android.*` types**
    (`WidgetSettings`, `WidgetLayoutSpec`, `WidgetPalette`) and is unit-tested on the
-   JVM by `WidgetLogicTest` (23 checks): which layout a given size gets, how many hour
-   columns fit, text size bounds, sky mood per weather code (mirrors the web app),
+   JVM by `WidgetLogicTest` (28 checks): which layout a given size gets (including Minimal for a
+   single cell, phone or tablet), how many hour columns fit, text size bounds, sky mood per weather code (mirrors the web app),
    text colour per background, opacity → alpha, and the settings rules.
 2. **Gradle compiles it and links every resource** — Java, all layouts, the generated
    sky drawables, both languages' strings, the manifest. CI's `android` job runs

@@ -32,9 +32,10 @@ login across every device — the same account as Quarc Music and Quarc Notes.
 - Android home-screen widget — refreshes itself in the background every ~45 min via
   a native WorkManager job, independent of the app being open; offered automatically
   the first time the app shows real weather, via Android's requestPinAppWidget prompt
-  - **Resizes down to 2×1** and adapts to its size: a single row (icon, temperature,
-    city/condition and a few hours if there's width), a compact two-line card, or the
-    full card with the hourly strip. Layout can be left on Auto or pinned
+  - **Shrinks to a single cell** (starts as a 2×1) and adapts to its size: *Minimal*
+    (just the icon over the temperature), a single row (icon, temperature, city/condition
+    and a few hours if there's width), a compact two-line card, or the full card with the
+    hourly strip. Layout can be left on Auto or pinned
   - **Your own look, per widget**: Sky (the app's gradient for the current weather),
     Dark, Light, Glass, any of 8 colours, or **Transparent** (straight onto the
     wallpaper, with a soft text shadow), plus an opacity slider, text colour

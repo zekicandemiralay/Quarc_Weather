@@ -120,9 +120,11 @@ final class WidgetRenderer {
         v.setTextColor(R.id.widget_hilo, fg2);
         v.setViewVisibility(R.id.widget_hilo, spec.showHiLo ? View.VISIBLE : View.GONE);
 
-        if (spec.mode == WidgetLayoutSpec.Mode.SINGLE_ROW) {
-            // The icon scales with the temperature so the two stay in proportion at any height.
+        if (spec.mode == WidgetLayoutSpec.Mode.MINIMAL || spec.mode == WidgetLayoutSpec.Mode.SINGLE_ROW) {
+            // The icon scales with the temperature so the two stay in proportion at any size.
             v.setTextViewTextSize(R.id.widget_icon, TypedValue.COMPLEX_UNIT_SP, Math.round(spec.tempSp * 0.8f));
+        }
+        if (spec.mode == WidgetLayoutSpec.Mode.SINGLE_ROW) {
             v.setViewVisibility(R.id.widget_text_col, spec.showTextColumn ? View.VISIBLE : View.GONE);
         }
 
@@ -145,6 +147,7 @@ final class WidgetRenderer {
 
     private static int layoutFor(WidgetLayoutSpec.Mode mode) {
         switch (mode) {
+            case MINIMAL: return R.layout.weather_widget_minimal;
             case SINGLE_ROW: return R.layout.weather_widget_single_row;
             case COMPACT: return R.layout.weather_widget_compact;
             default: return R.layout.weather_widget;

@@ -7,21 +7,24 @@
      unreliable to call "live".
 
      Size: it used to refuse to shrink below 4x3 cells (250x160dp), which is why a
-     "smallest" widget still had a lot of empty space. Now it can go down to 2x1
-     (110x40dp), starts at 4x2, and the layout adapts to whatever size it's given
-     (see WidgetLayoutSpec).
+     "smallest" widget still had a lot of empty space. Now it can go down to a single
+     cell, starts as a 2x1, and the layout adapts to whatever size it's given (see
+     WidgetLayoutSpec). The minimums are deliberately tiny: a launcher turns them
+     into a number of grid cells, and a bigger number here means a bigger footprint
+     the user can't shrink. minWidth/minHeight are what launchers before Android 12
+     use as the default size; targetCell* is the default on Android 12+.
 
      configure: the settings screen opens when the widget is added; reconfigurable
      (Android 12+) also lets the launcher offer "reconfigure" from a long press. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="250dp"
-    android:minHeight="110dp"
-    android:minResizeWidth="110dp"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="40dp"
     android:minResizeHeight="40dp"
-    android:targetCellWidth="4"
-    android:targetCellHeight="2"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
     android:updatePeriodMillis="1800000"
-    android:initialLayout="@layout/weather_widget_compact"
+    android:initialLayout="@layout/weather_widget_single_row"
     android:previewImage="@mipmap/ic_launcher"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"

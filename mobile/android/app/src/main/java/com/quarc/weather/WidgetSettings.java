@@ -10,8 +10,11 @@ package com.quarc.weather;
  */
 final class WidgetSettings {
 
-    /** How much the widget shows. AUTO picks by the widget's size (see WidgetLayoutSpec). */
-    enum Layout { AUTO, SINGLE_ROW, COMPACT, FULL }
+    /**
+     * How much the widget shows, smallest to largest. AUTO picks by the widget's size (see
+     * WidgetLayoutSpec). The declaration order is the order of the chips on the settings screen.
+     */
+    enum Layout { AUTO, MINIMAL, SINGLE_ROW, COMPACT, FULL }
 
     /** What sits behind the content. TRANSPARENT draws nothing at all. */
     enum Background { SKY, DARK, LIGHT, GLASS, COLOR, TRANSPARENT }

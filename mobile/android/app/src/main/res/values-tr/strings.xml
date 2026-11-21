@@ -14,10 +14,11 @@
     <string name="widget_config_which">Widget %1$d</string>
     <string name="widget_config_layout">Düzen</string>
     <string name="widget_config_layout_auto">Otomatik</string>
+    <string name="widget_config_layout_minimal">Minimal</string>
     <string name="widget_config_layout_single_row">Tek satır</string>
     <string name="widget_config_layout_compact">Kompakt</string>
     <string name="widget_config_layout_full">Tam</string>
-    <string name="widget_config_layout_hint">Otomatik, gösterilenleri widget\'ın boyutuna uydurur — değiştiğini görmek için widget\'ı yeniden boyutlandırın. Boyuttan bağımsız sabit kalması için diğerlerinden birini seçin.</string>
+    <string name="widget_config_layout_hint">Otomatik, gösterilenleri widget\'ın boyutuna uydurur — değiştiğini görmek için widget\'ı yeniden boyutlandırın. Minimal yalnızca simge ve sıcaklıktır, tek bir hücreye sığar. Boyuttan bağımsız sabit kalması için herhangi bir düzeni seçin.</string>
     <string name="widget_config_background">Arka plan</string>
     <string name="widget_config_bg_sky">Gökyüzü</string>
     <string name="widget_config_bg_dark">Koyu</string>

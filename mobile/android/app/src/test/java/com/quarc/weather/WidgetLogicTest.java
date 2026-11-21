@@ -43,9 +43,73 @@ public class WidgetLogicTest {
     }
 
     @Test
-    public void anUnreportedSizeFallsBackToAFourByTwo() {
+    public void anUnreportedSizeFallsBackToTheDefaultTwoByOne() {
+        // A new widget starts as a 2x1; until the launcher says otherwise, that is what to draw.
         WidgetLayoutSpec s = WidgetLayoutSpec.compute(AUTO, 0, 0);
-        assertEquals(WidgetLayoutSpec.Mode.COMPACT, s.mode); // 250 x 110
+        assertEquals(WidgetLayoutSpec.Mode.SINGLE_ROW, s.mode);
+        assertEquals(WidgetLayoutSpec.DEFAULT_WIDTH_DP, 110);
+        assertEquals(WidgetLayoutSpec.DEFAULT_HEIGHT_DP, 60);
+    }
+
+    // --- the smallest size: Minimal --------------------------------------------------
+
+    @Test
+    public void aNarrowWidgetGetsMinimalWhateverItsHeight() {
+        // ~1 phone cell is 40-70dp square; nothing but an icon and a number fits.
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, WidgetLayoutSpec.compute(AUTO, 57, 57).mode);
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, WidgetLayoutSpec.compute(AUTO, 40, 40).mode);
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, WidgetLayoutSpec.compute(AUTO, 99, 40).mode);
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, WidgetLayoutSpec.compute(AUTO, 60, 400).mode); // a tall sliver
+        // At exactly 100dp wide and short, it's a (2-cell) single row instead.
+        assertEquals(WidgetLayoutSpec.Mode.SINGLE_ROW, WidgetLayoutSpec.compute(AUTO, 100, 60).mode);
+    }
+
+    @Test
+    public void aSingleCellOnATabletAlsoGetsMinimalInsteadOfACrampedCard() {
+        // Tablet cells are big: roughly 140x108dp. A compact card would be squeezed into that;
+        // a big icon and temperature fill it properly.
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, WidgetLayoutSpec.compute(AUTO, 140, 108).mode);
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, WidgetLayoutSpec.compute(AUTO, 159, 200).mode);
+        // But once it is wide enough for a card, it gets one.
+        assertEquals(WidgetLayoutSpec.Mode.COMPACT, WidgetLayoutSpec.compute(AUTO, 160, 108).mode);
+        assertEquals(WidgetLayoutSpec.Mode.FULL, WidgetLayoutSpec.compute(AUTO, 160, 200).mode);
+        // A wide, short widget is a row, never Minimal.
+        assertEquals(WidgetLayoutSpec.Mode.SINGLE_ROW, WidgetLayoutSpec.compute(AUTO, 140, 70).mode);
+        assertEquals(WidgetLayoutSpec.Mode.SINGLE_ROW, WidgetLayoutSpec.compute(AUTO, 250, 40).mode);
+    }
+
+    @Test
+    public void minimalCanBePinnedAtAnySizeAndFillsWhatItIsGiven() {
+        WidgetLayoutSpec big = WidgetLayoutSpec.compute(WidgetSettings.Layout.MINIMAL, 400, 300);
+        assertEquals(WidgetLayoutSpec.Mode.MINIMAL, big.mode);
+        assertEquals("a big minimal widget scales up, within the cap", 56f, big.tempSp, 0.001f);
+        WidgetLayoutSpec tiny = WidgetLayoutSpec.compute(WidgetSettings.Layout.MINIMAL, 40, 40);
+        assertEquals("the smallest cell still gets readable text", 22f, tiny.tempSp, 0.001f);
+        // It scales with the SMALLER side, so a long thin widget doesn't get giant text.
+        assertEquals(
+            WidgetLayoutSpec.compute(WidgetSettings.Layout.MINIMAL, 300, 60).tempSp,
+            WidgetLayoutSpec.compute(WidgetSettings.Layout.MINIMAL, 60, 300).tempSp, 0.001f);
+    }
+
+    @Test
+    public void minimalShowsOnlyTheIconAndTemperature() {
+        WidgetLayoutSpec s = WidgetLayoutSpec.compute(WidgetSettings.Layout.MINIMAL, 120, 120);
+        assertEquals(0, s.hourColumns);
+        assertFalse(s.showTextColumn);
+        assertFalse(s.showHiLo);
+    }
+
+    @Test
+    public void everyLayoutChoiceYieldsAWellFormedSpecAtEverySize() {
+        for (WidgetSettings.Layout l : WidgetSettings.Layout.values()) {
+            for (int w = 0; w <= 500; w += 7) {
+                for (int h = 0; h <= 400; h += 9) {
+                    WidgetLayoutSpec s = WidgetLayoutSpec.compute(l, w, h);
+                    assertTrue(l + " " + w + "x" + h, s.mode != null && s.tempSp >= 22f && s.tempSp <= 56f);
+                    assertTrue(l + " " + w + "x" + h + " columns", s.hourColumns >= 0 && s.hourColumns <= 6);
+                }
+            }
+        }
     }
 
     @Test
