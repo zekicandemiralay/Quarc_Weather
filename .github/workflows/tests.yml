@@ -171,6 +171,17 @@ jobs:
           result=$(curl -s -o /dev/null -m 12 -w "HTTP %{http_code} in %{time_total}s"             -A "Quarc-Weather/1.0 (self-hosted personal weather app)"             "https://nominatim.openstreetmap.org/reverse?lat=41.0082&lon=28.9784&format=jsonv2&zoom=14" || echo "no response within 12s")
           echo "::notice title=Nominatim reverse-geocode from this runner::$result"
 
+      # Open-Meteo is rate-limited per IP and a runner's IP is shared. This records its answer (and how
+      # much quota is left) from here, so a "Forecast unavailable" failure can be told from a code bug.
+      - name: Probe Open-Meteo from this runner
+        continue-on-error: true
+        shell: bash
+        run: |
+          result=$(curl -s -m 15 -o /dev/null -D "$RUNNER_TEMP/om.headers" -w "HTTP %{http_code} in %{time_total}s" \
+            "https://api.open-meteo.com/v1/forecast?latitude=41.01&longitude=28.97&current=temperature_2m" || echo "no response within 15s")
+          quota=$(grep -i "x-ratelimit-remaining" "$RUNNER_TEMP/om.headers" 2>/dev/null | tr -d '\r' | head -1)
+          echo "::notice title=Open-Meteo forecast from this runner::$result ${quota}"
+
       # Suites that only need our own stack.
       - name: Browser suites
         env:
@@ -180,15 +191,33 @@ jobs:
           # Run EVERY suite even if one fails, and name each failure in a public annotation
           # (job logs need a login to read; annotations don't) — so one red run shows all the
           # broken suites and the first failing check of each, instead of just "exit code 1".
+          #
+          # These suites hit the live Open-Meteo API from a runner whose IP is shared with many other
+          # projects (Open-Meteo's free tier is rate-limited per IP), so a failed suite is retried ONCE
+          # after a pause. A suite that only passes on the retry is reported as a warning — visible, not
+          # silent — and a suite that fails twice is a real failure.
           failed=0
           for suite in ui timezone weather-screen widget-settings weather-effects daily-briefing; do
             echo "::group::$suite"
-            if node "tests/$suite.test.js" 2>&1 | tee "$RUNNER_TEMP/suite-$suite.log"; then
-              echo "$suite passed"
-            else
+            passed=0
+            first=""
+            for attempt in 1 2; do
+              if node "tests/$suite.test.js" 2>&1 | tee "$RUNNER_TEMP/suite-$suite-$attempt.log"; then
+                passed=1
+                break
+              fi
+              detail=$(grep -E "\[FAIL\]|Error|error:" "$RUNNER_TEMP/suite-$suite-$attempt.log" | head -4 | tr '\n' ' ' | cut -c1-700)
+              if [ "$attempt" = "1" ]; then
+                first="$detail"
+                echo "attempt 1 of $suite failed — waiting 30s and retrying once"
+                sleep 30
+              fi
+            done
+            if [ "$passed" = "1" ] && [ "$attempt" = "2" ]; then
+              echo "::warning title=Browser suite '$suite' passed only on retry::${first:-no [FAIL] line}"
+            elif [ "$passed" = "0" ]; then
               failed=1
-              detail=$(grep -E "\[FAIL\]|Error|error:" "$RUNNER_TEMP/suite-$suite.log" | head -4 | tr '\n' ' ' | cut -c1-800)
-              echo "::error title=Browser suite '$suite' failed::${detail:-no [FAIL] line — see the job log}"
+              echo "::error title=Browser suite '$suite' failed twice::${detail:-no [FAIL] line — see the job log}"
             fi
             echo "::endgroup::"
           done
@@ -200,6 +229,8 @@ jobs:
       #   location-ui   live Nominatim + Open-Meteo geocoding and timing; cause of its CI-only failure
       #                 at the "save Berlin" step not yet pinned down (see the probe above)
       - name: Live third-party suites (informational)
+        # Run even when a blocking suite above failed, so one red run still reports these too.
+        if: ${{ !cancelled() }}
         continue-on-error: true
         shell: bash
         env:

@@ -14,6 +14,12 @@ Where a suite *injects* data into a real response (the alerts card, the sunrise
 placement, the sky moods) it's because real weather is whatever it is today —
 the injected value is the only way to prove a rare case renders correctly.
 
+CI's browser suites call the live Open-Meteo API from a runner whose IP is shared with many
+other projects (its free tier is rate-limited per IP, and one CI run did fail with "Forecast
+unavailable" while the app code was unchanged). So a failed browser suite is retried once after a
+30 s pause: passing only on the retry is reported as a warning annotation (visible, never
+silent), and failing twice is a real failure.
+
 CI (`.github/workflows/tests.yml`) runs them on every push and pull request:
 `unit`, `android` (Gradle build + widget unit tests), `api` (api + location-api +
 widget-api) and `browser` (ui, timezone, weather-screen, widget-settings,
