@@ -18,11 +18,12 @@ CI (`.github/workflows/tests.yml`) runs them on every push and pull request:
 `unit`, `android` (Gradle build + widget unit tests), `api` (api + location-api +
 widget-api) and `browser` (ui, timezone, weather-screen, widget-settings,
 weather-effects, daily-briefing). `radar`, `update-banner` and `location-ui` also run
-there but only *report* — they depend on third parties (the tile servers, the
-rate-limited GitHub API, and OpenStreetMap's Nominatim, which throttles cloud IPs so
-the landing screen can arrive late from a CI runner while passing from a home
-connection), which can misbehave without the code being wrong. Run all of them
-locally before a release.
+there but only *report*. `radar` and `update-banner` depend on third parties (the tile
+servers, the rate-limited GitHub API) that can misbehave without the code being wrong.
+`location-ui` uses live geocoding and timing; it passes locally but fails at its "save
+Berlin" step on the CI runner for a reason that is still being narrowed down (OpenStreetMap
+Nominatim, the first suspect, answers fast from the runner) — its failure message now includes
+the geocode status codes and the page text. Run all of them locally before a release.
 
 | Suite | What it covers |
 |---|---|

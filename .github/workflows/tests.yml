@@ -159,10 +159,11 @@ jobs:
             curl -fsS "$url" >/dev/null || { echo "never came up: $url"; tail -n 30 "$RUNNER_TEMP"/*.log; exit 1; }
           done
 
-      # location-ui asks the backend to reverse-geocode a GPS point through OpenStreetMap's Nominatim
-      # (8 s timeout). Public Nominatim throttles cloud-datacenter IPs, which makes the landing screen
-      # arrive late and that suite fail from a GitHub runner while passing from a home connection.
-      # This records what Nominatim actually does from the runner, as a public annotation.
+      # location-ui reverse-geocodes a GPS point through OpenStreetMap's Nominatim (8 s timeout) and
+      # fails from a GitHub runner while passing from a home connection. Nominatim was the first
+      # suspect; this probe records what it actually does from the runner, as a public annotation.
+      # (It answered 200 in ~0.5 s, so Nominatim alone is NOT the explanation — the suite's own failure
+      # message now carries the geocode status codes and the page text to narrow it down.)
       - name: Probe Nominatim from this runner
         continue-on-error: true
         shell: bash
@@ -196,7 +197,8 @@ jobs:
       # These depend on a live third party that isn't ours to keep up, so they report but don't block:
       #   radar         Esri / RainViewer tile servers
       #   update-banner the GitHub Releases API (rate-limited)
-      #   location-ui   OpenStreetMap Nominatim, which throttles cloud IPs (see the probe above)
+      #   location-ui   live Nominatim + Open-Meteo geocoding and timing; cause of its CI-only failure
+      #                 at the "save Berlin" step not yet pinned down (see the probe above)
       - name: Live third-party suites (informational)
         continue-on-error: true
         shell: bash

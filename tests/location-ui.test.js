@@ -161,7 +161,23 @@ async function resetServerState(page) {
       await page.goto(`${BASE}/add`, { waitUntil: 'networkidle2' });
       await page.waitForSelector('input', { timeout: 10000 });
       await page.type('input', 'Berlin');
-      await page.waitForFunction(() => document.querySelectorAll('li button').length > 0, { timeout: 20000 });
+      // On a timeout, say WHY: this step has failed on a CI runner for reasons that can't be seen from
+      // outside, so the message carries the geocode responses' status codes and what the page showed.
+      const geocodeStatuses = [];
+      const onResponse = (r) => {
+        if (r.url().includes('/api/geocode/search')) geocodeStatuses.push(r.status());
+      };
+      page.on('response', onResponse);
+      try {
+        await page.waitForFunction(() => document.querySelectorAll('li button').length > 0, { timeout: 20000 });
+      } catch (e) {
+        const shown = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 160));
+        throw new Error(
+          `no search results after 20s [geocode responses: ${geocodeStatuses.join(',') || 'none'}; page: "${shown}"]`
+        );
+      } finally {
+        page.off('response', onResponse);
+      }
       await page.click('li button');
       // handleAdd navigates to "/" on success — the list, not the new city's
       // detail page — so "last opened" isn't set until the card is actually
