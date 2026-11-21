@@ -163,13 +163,24 @@ jobs:
       - name: Browser suites
         env:
           NODE_PATH: ${{ runner.temp }}/pptr/node_modules:${{ github.workspace }}/backend/node_modules
+        shell: bash
         run: |
-          set -e
+          # Run EVERY suite even if one fails, and name each failure in a public annotation
+          # (job logs need a login to read; annotations don't) — so one red run shows all the
+          # broken suites and the first failing check of each, instead of just "exit code 1".
+          failed=0
           for suite in ui timezone location-ui weather-screen widget-settings weather-effects daily-briefing; do
             echo "::group::$suite"
-            node "tests/$suite.test.js"
+            if node "tests/$suite.test.js" 2>&1 | tee "$RUNNER_TEMP/suite-$suite.log"; then
+              echo "$suite passed"
+            else
+              failed=1
+              detail=$(grep -E "\[FAIL\]|Error|error:" "$RUNNER_TEMP/suite-$suite.log" | head -4 | tr '\n' ' ' | cut -c1-800)
+              echo "::error title=Browser suite '$suite' failed::${detail:-no [FAIL] line — see the job log}"
+            fi
             echo "::endgroup::"
           done
+          exit $failed
 
       # These two depend on a live third party that isn't ours to keep up —
       # Esri/RainViewer tile servers for the radar, and the GitHub Releases API
