@@ -3,10 +3,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { initDb } = require('./db');
 const { requireAuth } = require('./middleware/auth');
-const citiesRoutes = require('./routes/cities');
-const weatherRoutes = require('./routes/weather');
-const geocodeRoutes = require('./routes/geocode');
-const prefsRoutes = require('./routes/prefs');
+const syncRoutes = require('./routes/sync');
 
 const app = express();
 const PORT = process.env.PORT || 3004;
@@ -20,10 +17,10 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'quarc-weath
 // Login/register/session are served by the shared quarc-auth container — nginx
 // intercepts /api/auth/* before it reaches this backend. Everything here just
 // verifies the JWT that service issued, using the same JWT_SECRET.
-app.use('/api/cities', requireAuth, citiesRoutes);
-app.use('/api/weather', requireAuth, weatherRoutes);
-app.use('/api/geocode', requireAuth, geocodeRoutes);
-app.use('/api/prefs', requireAuth, prefsRoutes);
+//
+// This backend no longer proxies weather: every device asks the weather
+// provider directly. It only keeps what must follow an account between devices.
+app.use('/api/sync', requireAuth, syncRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error('[quarc-weather]', err);
