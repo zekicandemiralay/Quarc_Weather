@@ -10,11 +10,18 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const { computeAlerts } = require('../backend/src/services/alerts');
-const { addHours, currentHourWallClock } = require('../backend/src/services/wallclock');
-
 // The frontend libs are ES modules (frontend/package.json says "type": "module").
 const fe = (rel) => import(pathToFileURL(path.join(__dirname, '..', 'frontend', 'src', 'lib', rel)).href);
+
+// The alert computation used to live on the server; it now runs on the device (every device asks the weather
+// provider itself), so these tests exercise the app's copy.
+let computeAlerts;
+let addHours;
+let currentHourWallClock;
+test.before(async () => {
+  ({ computeAlerts } = await fe('forecast/computeAlerts.js'));
+  ({ addHours, currentHourWallClock } = await fe('wallclock.js'));
+});
 
 // --- helpers -----------------------------------------------------------------
 

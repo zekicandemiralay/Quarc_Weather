@@ -81,32 +81,11 @@ export function nowInTimezone(timezone, locale = 'en') {
   }
 }
 
-/**
- * The current hour, expressed as a "YYYY-MM-DDTHH:00" wall-clock string in
- * the given timezone — for finding "which hourly.time entry is the current
- * one" by plain string comparison, since Open-Meteo's own entries share
- * that exact shape and sort correctly as strings (no Date object, no
- * naive-string reinterpretation risk — see parseWallClock above for why
- * that matters). en-CA is used only as a reliable YYYY-MM-DD formatter;
- * the parts are reassembled by hand so the result never depends on a
- * locale's own separator/ordering choices.
- */
-export function currentHourWallClock(timezone) {
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date());
-    const get = (type) => parts.find((p) => p.type === type)?.value;
-    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:00`;
-  } catch {
-    return null;
-  }
-}
+// The current hour as a "YYYY-MM-DDTHH:00" wall-clock string in a city's own timezone — for finding
+// "which hourly.time entry is the current one" by plain string comparison (see parseWallClock above for
+// why no Date object may be involved). The single implementation lives in ./wallclock, shared with the
+// alert computation.
+export { currentHourWallClock } from './wallclock.js';
 
 /**
  * Visibility ready to print: km for metric (the API sends metres), miles for

@@ -18,11 +18,11 @@ const PHASES = [
 ];
 
 /**
- * @returns {{ phase: string, fraction: number, illumination: number }}
+ * @returns {{ phase: string, fraction: number, illumination: number, age_days: number }}
  *   fraction — 0 at new moon, 0.5 at full, approaching 1 back at new.
  *   illumination — 0..1 lit portion of the disc.
  */
-function moonPhase(date = new Date()) {
+export function moonPhase(date = new Date()) {
   const days = (date.getTime() - REFERENCE_NEW_MOON) / 86400000;
   let fraction = (days % SYNODIC_MONTH) / SYNODIC_MONTH;
   if (fraction < 0) fraction += 1;
@@ -37,5 +37,3 @@ function moonPhase(date = new Date()) {
     age_days: Number((fraction * SYNODIC_MONTH).toFixed(2)),
   };
 }
-
-module.exports = { moonPhase };

@@ -21,3 +21,6 @@ tests/shots*/
 
 # Proton Drive sync leftovers (conflict / renamed / name-clash copies) — never commit these
 *(# *#)*
+
+# The frontend Dockerfile installs from package.json alone, so a lockfile would only mislead
+frontend/package-lock.json

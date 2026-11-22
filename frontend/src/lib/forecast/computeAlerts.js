@@ -9,8 +9,10 @@
 // warnings — the UI says so. Thresholds are in SI-ish units (mm/h, km/h, °C);
 // the forecast arrives in whatever units the user picked, so everything is
 // normalised through the unit strings Open-Meteo returns before comparing.
+//
+// (Presentation of these alerts — wording, icons — lives in ../alerts.js.)
 
-const { currentHourWallClock, addHours } = require('./wallclock');
+import { currentHourWallClock, addHours } from '../wallclock.js';
 
 const WINDOW_HOURS = 48;
 const MAX_GAP_HOURS = 2; // hours still count as one event if a quiet gap is this short or less
@@ -27,7 +29,7 @@ const toKmh = (v, unit) => {
   }
 };
 const toMm = (v, unit) => (unit === 'inch' ? v * 25.4 : v);
-// Open-Meteo switches visibility to feet when the temperature unit is Fahrenheit.
+// Open-Meteo switches visibility to feet when the precipitation unit is inches.
 const toMetres = (v, unit) => (unit === 'ft' ? v * 0.3048 : v);
 
 // Severity: 1 = advisory, 2 = warning.
@@ -117,7 +119,7 @@ const PEAK_IS_MIN = new Set(['cold']);
  *   `start`/`end` are naive city wall-clock strings; `end` is the *end* of the
  *   last affected hour.
  */
-function computeAlerts(forecast, timezone, now = new Date()) {
+export function computeAlerts(forecast, timezone, now = new Date()) {
   const hourly = forecast?.hourly;
   if (!hourly?.time?.length) return [];
 
@@ -191,5 +193,3 @@ function computeAlerts(forecast, timezone, now = new Date()) {
     .sort((a, b) => b.level - a.level || a.start.localeCompare(b.start))
     .slice(0, MAX_ALERTS);
 }
-
-module.exports = { computeAlerts };
