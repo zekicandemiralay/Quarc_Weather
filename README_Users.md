@@ -7,9 +7,20 @@ the same on your phone, your laptop, and any browser you log into.
 
 ## Before anything else: Tailscale
 
-Quarc Weather runs on a private server, not the public internet. You need
+Quarc Weather's server is private, not on the public internet. You need
 [Tailscale](https://tailscale.com/download) installed and connected, signed in
-with the account you were invited on. Nothing below works without it.
+with the account you were invited on, for **two** things: signing in, and syncing
+your cities and settings between your devices.
+
+**The weather itself does not need Tailscale.** The Android app, the Android widget
+and the Windows app get the weather, city search and place names straight from the
+internet, and keep your cities on the device. So once you're signed in they keep
+working with Tailscale off — you just need normal internet. Anything you change in the
+meantime (a city you add, a setting you switch) waits in a queue and is sent when
+Tailscale is back on; a small badge shows how many changes are waiting.
+
+The browser version, the iPhone/iPad home-screen app and the macOS and Linux apps load
+from the server, so they need Tailscale to open.
 
 ---
 
@@ -61,16 +72,19 @@ bottom of this section if you're curious why.
 
 **What it shows:** your top city (current location if you have it enabled,
 otherwise your first saved city), temperature, condition, and today's high/low.
-Tap it to open the full app.
+Tap it to open the full app. You can pick a specific city in the widget's own
+settings.
 
 **How fresh is it:** it refreshes itself roughly every 45 minutes in the
-background — no need to have the app open. It also refreshes immediately right
-after you log in or place the widget for the first time.
+background — no need to have the app open, and no need for Tailscale: it asks the
+weather provider directly. It also refreshes right away whenever the app changes
+your list of cities, and when you place the widget for the first time.
 
-**If it shows "Open Quarc Weather to sign in"** — the widget's stored session
-has expired (sessions last 7 days) or you're not logged in. Open the app,
-log in, and the widget picks the new session up automatically within a
-few seconds.
+**If it shows "Open Quarc Weather to sign in"** — the app hasn't told the widget
+which cities to show yet (this happens once after updating the app, and after you log
+out). Open the app and the widget picks up your cities within a few seconds. After the
+update from version 1.0.x, a widget that was set to one specific city shows the first city
+in your list until you choose the city again in the widget's settings.
 
 **Removing it:** long-press the widget on your home screen → **Remove**. This
 also stops its background refresh — it won't keep using battery for a widget
@@ -103,10 +117,11 @@ background job the widget uses, not a real-time alarm.
 background check entirely — no battery cost for a notification you're not
 getting.
 
-This one setting follows your account like the others (units, language) —
-turn it on on one device, and it's already configured next time you open the
-app on another Android device signed into the same account, though each
-device still needs to grant its own notification permission.
+This one setting belongs to the **device** — unlike units and language, which
+follow your account. A phone wants a morning notification and a tablet may not,
+so turning it on here does nothing on your other devices (and each device needs
+to grant its own notification permission). It fetches the weather itself, so it
+arrives even with Tailscale off.
 
 ---
 
@@ -133,6 +148,14 @@ Download the installer for your platform from
 **macOS:** the app isn't signed with an Apple developer certificate, so the first
 launch needs a right-click → **Open** instead of a double-click.
 
+**Windows** carries the whole app inside the installer, so — like Android — it opens
+and shows the weather without Tailscale; sign in and sync need it. The first time it
+asks for your location, Windows shows a permission prompt; until you answer, the app
+shows its logo for a few seconds and then opens on your last city. A new version means
+a new installer (the app tells you, like on Android); a server update alone does not
+change it. **macOS and Linux** open the server's web app in a window, so they need
+Tailscale to load.
+
 Or skip the install entirely and use the URL in any browser — same app.
 
 ---
@@ -155,39 +178,58 @@ so you can tell apart the several places that share a name.
 phone will ask permission first.
 
 **Reorder or remove** — hover (or tap) a city card on the main list and use the
-arrows to move it, or **✕** to remove it.
+arrows to move it, or **✕** to remove it. Adding a city on two devices at the same
+time never creates a duplicate: the same place is one city, and everything you did on
+either device is kept when they sync.
+
+**My Location** — the first card on the list when you've allowed location. It belongs
+to that one device: your phone's position is never sent to the server or shown on your
+other devices.
 
 **City details** — tap any card for the full screen: hourly, 10-day, all the
 detail tiles, and a **Precipitation radar** card near the bottom — tap it to
 expand a live, animated radar map centered on the city (free, no setup).
 
 **Units and language** — **Settings** (⚙). Switch °C/°F, wind units, mm/inch,
-theme, and English/Turkish. These save to your account, so they apply on every
-device you use.
+theme, and English/Turkish. Units and language save to your account, so they apply
+on every device you use (change units on one device and the language on another and
+both stick). The **theme** is per device.
 
 ---
 
-## Offline
+## Without Tailscale (and without a connection)
 
-If you open the app with no connection, it shows the last forecast it
-successfully fetched for each city, labelled with how long ago that was. It
-refreshes automatically as soon as you're back online, and whenever you bring
-the app back to the foreground.
+**Tailscale off, internet on** (Android and Windows apps, and the widget): everything
+works — your cities and settings are on the device, and the weather, search and place
+names come straight from the internet. You can add, remove and reorder cities and change
+settings; a note at the top says how many changes are waiting to sync, and they go through on
+their own when Tailscale is back. Two devices that were both changed meanwhile merge
+without losing anything.
+
+**No internet at all:** the app still opens and shows the last forecast it fetched for
+each city, labelled with how long ago that was. It refreshes automatically as soon as
+you're back online, and whenever you bring the app back to the foreground. (Adding a city
+needs internet, because the search does.)
 
 ---
 
 ## Troubleshooting
 
-**"Not authenticated" or it keeps bouncing to login** — check Tailscale is
-connected. The session cookie is fine; the server just isn't reachable.
+**The list is empty on a new device, or my changes don't show up on my other
+devices** — they sync through the server, which needs Tailscale. Connect it and give the
+app a few seconds (or reopen it). The badge at the top shows how many changes are still
+waiting; it disappears when they're all sent.
 
 **A city shows `--` instead of a temperature** — that city's forecast failed to
-load. Pull the app to the foreground again, or check your connection. The rest of
+load. Pull the app to the foreground again, or check your internet connection. The rest of
 your list is unaffected.
 
-**Nothing loads at all** — confirm Tailscale is connected and try
-`https://quarcnet0.tail84500c.ts.net:4002` in a browser. If the browser works but
-the app doesn't, reinstall the app.
+**The browser version or the macOS/Linux app won't open** — those load from the server,
+so check Tailscale is connected and try `https://quarcnet0.tail84500c.ts.net:4002` in a
+browser. If the browser works but the app doesn't, reinstall the app.
+
+**"Update required"** — your app is older than the server understands. Update it from
+Quarc Store (or the Releases page) and it works again.
 
 **Search finds nothing** — you need at least 2 characters. Try the local-language
 spelling too; the search understands both (e.g. both "Istanbul" and "İstanbul").
@@ -196,5 +238,6 @@ spelling too; the search understands both (e.g. both "Istanbul" and "İstanbul")
 once automatically, but you can always add it manually: long-press your home
 screen → **Widgets** → **Quarc Weather**.
 
-**Widget is stuck on old data** — open the app once (this refreshes the
-widget's stored session), or long-press the widget → remove it → add it again.
+**Widget is stuck on old data** — it refreshes itself every ~45 minutes and needs
+an internet connection (not Tailscale). Open the app once to refresh it right away, or
+long-press the widget → remove it → add it again.
