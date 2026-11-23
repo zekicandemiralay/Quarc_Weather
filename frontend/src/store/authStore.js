@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { apiUrl } from '../lib/apiUrl';
 import { syncWidgetSession, clearWidgetSession } from '../lib/widgetBridge';
 import { syncFromStore, watchStoreSession } from '../lib/storeSso';
+import { startSyncFor, stopSync, setAuthLostHandler } from '../lib/localData';
 
 const useAuthStore = create((set, get) => ({
   user: JSON.parse(localStorage.getItem('quarc_user') || 'null'),
@@ -20,6 +21,9 @@ const useAuthStore = create((set, get) => ({
     }
     const user = await res.json();
     localStorage.setItem('quarc_user', JSON.stringify(user));
+    // Adopt the account BEFORE any screen reads local data: if a different person used this device last, their
+    // cities are wiped here rather than shown for a moment.
+    await startSyncFor(user.id);
     set({ user, loading: false });
     syncWidgetSession();
     return user;
@@ -27,6 +31,7 @@ const useAuthStore = create((set, get) => ({
 
   async logout() {
     await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
+    stopSync();
     localStorage.removeItem('quarc_user');
     set({ user: null, loading: false });
     clearWidgetSession();
@@ -44,24 +49,31 @@ const useAuthStore = create((set, get) => ({
       if (res.ok) {
         const user = await res.json();
         localStorage.setItem('quarc_user', JSON.stringify(user));
+        await startSyncFor(user.id);
         set({ user, loading: false });
         // Covers the common case too, not just a fresh login — most app
         // opens are "already signed in", and the widget's stored token can
         // go stale (rotated, revoked) between sessions just like any cookie.
         syncWidgetSession();
       } else {
+        stopSync();
         localStorage.removeItem('quarc_user');
         set({ user: null, loading: false });
       }
     } catch {
-      // Network error/offline — fall back to the last cached user rather than
-      // logging out, so the app stays usable offline.
-      set({ user: get().user, loading: false });
+      // The server can't be reached (Tailscale off, server down, no network): keep the last known login and carry
+      // on from the local database — the app is fully usable, changes just wait to sync.
+      const cachedUser = get().user;
+      if (cachedUser) startSyncFor(cachedUser.id).catch(() => {});
+      set({ user: cachedUser, loading: false });
     }
   },
 }));
 
 // Signing in/out in Quarc Store applies as soon as the user switches back here.
 watchStoreSession(() => useAuthStore.getState().checkSession());
+
+// The sync engine got a 401: the session is gone. Re-check, which routes to the login screen if need be.
+setAuthLostHandler(() => useAuthStore.getState().checkSession());
 
 export default useAuthStore;

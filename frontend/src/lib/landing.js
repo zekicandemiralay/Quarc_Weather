@@ -1,40 +1,39 @@
-import { listCities, addCity } from './api';
-import { getCurrentPositionSafe, currentLocationPayload } from './geolocation';
+import { db, here } from './localData';
+import { HERE_ID } from './here';
 import { getLastOpenedCity } from './lastOpened';
 import i18n from '../i18n';
 
 /**
  * Decides where the app should land on open, in priority order:
- *   1. Live current location (if permitted and reachable)
+ *   1. My Location, if this device just got a live GPS fix
  *   2. The last city the user had open (if it still exists)
  *   3. Nothing — the caller falls back to the plain city list
  *
- * Every failure mode along the way — permission denied, no GPS fix, offline,
- * a deleted last-opened city — is swallowed here and just moves to the next
- * priority. None of this should ever surface as an error to the user; a
- * denied location prompt is a normal, silent outcome, not a failure.
+ * Everything is answered from the local database: no server is asked, so this works the same with Tailscale off.
+ * Every failure along the way — permission denied, no GPS fix, a deleted last-opened city — is swallowed and just
+ * moves to the next priority. A denied location prompt is a normal, silent outcome, not an error.
  *
- * @returns {Promise<string|null>} a city id to navigate to, or null to stay
- *   on the list.
+ * @returns {Promise<string|null>} a city id to navigate to ('here' for My Location), or null to stay on the list.
  */
 export async function resolveLandingCityId(userId) {
-  const coords = await getCurrentPositionSafe();
-  if (coords) {
-    try {
-      const city = await addCity(currentLocationPayload(coords, i18n.language));
-      return city.id;
-    } catch {
-      /* offline, server error — fall through to last-opened */
-    }
+  let record = null;
+  try {
+    const result = await here.refresh({ language: i18n.language, timeout: 8000 });
+    record = result.record;
+    // Only a FRESH fix lands on My Location: a permission that was later denied must not keep opening an old fix.
+    if (result.fresh) return HERE_ID;
+  } catch {
+    /* fall through to the last-opened city */
   }
 
   const lastId = getLastOpenedCity(userId);
-  if (lastId) {
+  if (lastId === HERE_ID && record) return HERE_ID;
+  if (lastId && lastId !== HERE_ID) {
     try {
-      const cities = await listCities();
-      if (cities.some((c) => c.id === lastId)) return lastId;
+      const row = await db.cities.get(lastId);
+      if (row && !row.is_deleted) return lastId;
     } catch {
-      /* offline — can't confirm it still exists, fall through to the list */
+      /* local database unavailable — show the list */
     }
   }
 

@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { searchCities, addCity, listCities } from '../../lib/api';
-import { getCurrentPositionSafe, currentLocationPayload } from '../../lib/geolocation';
+import { cityStore, here } from '../../lib/localData';
+import { useLive } from '../../lib/useLive';
+import { searchPlaces } from '../../lib/forecast/provider';
+import { cityKey } from '../../lib/cityKey';
 
 export default function AddCity() {
   const navigate = useNavigate();
@@ -10,19 +12,19 @@ export default function AddCity() {
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
-  const [existing, setExisting] = useState([]);
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef(null);
 
+  const existing = useLive(() => cityStore.listCities(), [], []);
+
   useEffect(() => {
     inputRef.current?.focus();
-    listCities().then(setExisting).catch(() => {});
   }, []);
 
-  // Debounced search — the geocoder is fast, but typing "istanbul" shouldn't
-  // fire eight requests.
+  // Debounced search — the geocoder is fast, but typing "istanbul" shouldn't fire eight requests. The search goes
+  // straight to the weather provider's geocoder, so it works whenever the device has internet, server or not.
   useEffect(() => {
     if (query.trim().length < 2) {
       setResults([]);
@@ -31,7 +33,7 @@ export default function AddCity() {
     setSearching(true);
     const handle = setTimeout(async () => {
       try {
-        setResults(await searchCities(query, i18n.language));
+        setResults(await searchPlaces(query, { language: i18n.language }));
         setError('');
       } catch (err) {
         setError(err.message);
@@ -42,26 +44,14 @@ export default function AddCity() {
     return () => clearTimeout(handle);
   }, [query, i18n.language]);
 
-  const alreadySaved = (r) =>
-    existing.some(
-      (c) => Math.abs(c.latitude - r.latitude) < 0.02 && Math.abs(c.longitude - r.longitude) < 0.02
-    );
+  // Same cell = same city (the id is derived from the coordinates), so this matches exactly what saving would do.
+  const alreadySaved = (r) => existing.some((c) => c.id === cityKey(r.latitude, r.longitude));
 
-  async function handleAdd(place, isCurrentLocation = false) {
+  async function handleAdd(place) {
     setBusy(true);
     setError('');
     try {
-      await addCity({
-        name: place.name,
-        country: place.country,
-        country_code: place.country_code,
-        admin1: place.admin1,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        timezone: place.timezone,
-        is_current_location: isCurrentLocation,
-        language: place.language,
-      });
+      await cityStore.addCity(place);
       navigate('/');
     } catch (err) {
       setError(err.message);
@@ -70,21 +60,19 @@ export default function AddCity() {
   }
 
   async function handleUseLocation() {
-    // getCurrentPositionSafe picks the right path itself (native Capacitor
-    // plugin on Android, browser API everywhere else) — no need to
-    // pre-check navigator.geolocation here, and doing so would be wrong on
-    // Android where that's not necessarily the path actually used.
+    // here.refresh picks the right GPS path itself (native Capacitor plugin on Android, browser API everywhere
+    // else). My Location is stored on this device only — it appears as the first card and is never synced.
     setBusy(true);
-    const coords = await getCurrentPositionSafe({ timeout: 10000 });
-    if (!coords) {
+    setError('');
+    const { fresh, record } = await here.refresh({ language: i18n.language, timeout: 10000 });
+    if (!fresh && !record) {
       setBusy(false);
-      // getCurrentPositionSafe swallows the specific error (denied vs.
-      // unavailable vs. timed out) — a generic message is honest here since
-      // we genuinely can't tell which one happened.
+      // The specific cause (denied vs. unavailable vs. timed out) is swallowed on purpose — a generic message is
+      // honest here since we genuinely can't tell which one happened.
       setError(t('cities.locationUnavailable'));
       return;
     }
-    handleAdd(currentLocationPayload(coords, i18n.language), true);
+    navigate('/');
   }
 
   return (

@@ -154,6 +154,23 @@
       "uv": "UV indeksi {{value}} değerine kadar"
     }
   },
+  "sync": {
+    "title": "Eşitleme",
+    "hint": "Şehirleriniz ve birimleriniz bu cihazda tutulur ve Quarc sunucunuza ulaşılabildiğinde eşitlenir. Hava durumu doğrudan hava durumu servisinden gelir, bu yüzden sunucu olmadan da çalışır.",
+    "lastSync": "Son eşitleme {{time}}",
+    "never": "Henüz eşitlenmedi",
+    "syncNow": "Şimdi eşitle",
+    "syncing": "Eşitleniyor…",
+    "unreachable": "Sunucuya ulaşılamıyor — çevrimdışı çalışılıyor",
+    "unreachablePending_one": "Çevrimdışı — eşitlenmeyi bekleyen {{count}} değişiklik var",
+    "unreachablePending_other": "Çevrimdışı — eşitlenmeyi bekleyen {{count}} değişiklik var",
+    "pending_one": "Eşitlenecek {{count}} değişiklik var",
+    "pending_other": "Eşitlenecek {{count}} değişiklik var",
+    "signIn": "Eşitlemek için tekrar giriş yapın",
+    "error": "Eşitleme sorunu — yeniden denenecek",
+    "firstConnectTitle": "Şehirlerinizi yüklemek için bir kez bağlanın",
+    "firstConnectHint": "Listeniz Quarc sunucunuzda saklanır. Bu uygulamayı sunucuya bağlıyken (örneğin Tailscale açıkken) bir kez açın; bundan sonra bu cihaza kaydedilir."
+  },
   "settings": {
     "title": "Ayarlar",
     "units": "Birimler",

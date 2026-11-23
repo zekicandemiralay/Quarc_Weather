@@ -154,6 +154,23 @@
       "uv": "UV index up to {{value}}"
     }
   },
+  "sync": {
+    "title": "Sync",
+    "hint": "Your cities and units are kept on this device and synced with your Quarc server whenever it can be reached. Weather comes straight from the weather service, so it works without the server too.",
+    "lastSync": "Last synced {{time}}",
+    "never": "Not synced yet",
+    "syncNow": "Sync now",
+    "syncing": "Syncing…",
+    "unreachable": "Server not reachable — working offline",
+    "unreachablePending_one": "Offline — {{count}} change waiting to sync",
+    "unreachablePending_other": "Offline — {{count}} changes waiting to sync",
+    "pending_one": "{{count}} change to sync",
+    "pending_other": "{{count}} changes to sync",
+    "signIn": "Sign in again to sync",
+    "error": "Sync problem — will retry",
+    "firstConnectTitle": "Connect once to load your cities",
+    "firstConnectHint": "Your list is stored on your Quarc server. Open this app once while connected to it (for example with Tailscale on) and it will be saved on this device from then on."
+  },
   "settings": {
     "title": "Settings",
     "units": "Units",

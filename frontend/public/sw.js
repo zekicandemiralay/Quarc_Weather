@@ -1,4 +1,6 @@
-const CACHE_NAME = 'quarc-weather-v1';
+// v2: forecasts now come straight from the weather provider (a different origin), and v1 would have cached and
+// served those. Bumping the name makes the activate handler below delete every v1 cache.
+const CACHE_NAME = 'quarc-weather-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -16,9 +18,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  // Forecasts must never come from the SW cache — the app does its own
-  // freshness-aware caching in localStorage, with an "as of" timestamp.
+  // This worker exists to open the APP SHELL offline — nothing else. Forecasts, city search, place names and map
+  // tiles all live on OTHER origins (Open-Meteo, Nominatim, Esri, RainViewer) and must never be cached or answered
+  // from here: the app does its own freshness-aware caching, with an "as of" time, and a stale forecast served
+  // silently by the worker would bypass all of it.
   if (request.method !== 'GET' || request.url.includes('/api/')) return;
+  if (new URL(request.url).origin !== self.location.origin) return;
 
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {

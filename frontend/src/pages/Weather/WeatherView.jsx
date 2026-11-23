@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getCityWeather, cacheWeather, readCachedWeather } from '../../lib/api';
+import { db, here, forecasts } from '../../lib/localData';
+import { HERE_ID } from '../../lib/here';
 import usePullToRefresh from '../../lib/usePullToRefresh';
 import { labelKey, iconFor, skyFor, skyBucketFor } from '../../lib/weatherCodes';
 import { round, relativeTime } from '../../lib/format';
@@ -16,9 +17,9 @@ import DailyList from './DailyList';
 import DetailGrid from './DetailGrid';
 import AlertsCard from './AlertsCard';
 
-// Coming back to the app within this window doesn't re-fetch — the server only
-// refreshes its forecast every few minutes anyway, and a fetch on every tab
-// switch is wasted battery and data.
+// Coming back to the app within this window doesn't re-fetch — the weather
+// provider only refreshes its forecast every few minutes anyway, and a fetch on
+// every tab switch is wasted battery and data.
 const FOREGROUND_REFRESH_MIN_MS = 60 * 1000;
 
 export default function WeatherView() {
@@ -35,53 +36,63 @@ export default function WeatherView() {
   const scrollRef = useRef(null);
   const pullRef = useRef(null);
   const lastFetchRef = useRef(0);
+  const hasDataRef = useRef(false); // read inside load() without making it re-create on every data change
   const [scrolled, setScrolled] = useState(false);
 
-  // One request carries both the saved city and its forecast (the server
-  // resolves the city id itself), so there's no "fetch the list, then fetch the
-  // weather" waterfall — and the single cached payload is enough to render the
-  // whole screen offline.
+  // The city comes from the local database ('here' is this device's My Location) and its forecast from the local
+  // cache or, when that is stale, straight from the weather provider — no Quarc server involved, so this works the
+  // same with Tailscale off. If the provider can't be reached either, the last good copy is shown, flagged stale.
   const load = useCallback(
     async ({ spinner = true, force = false } = {}) => {
       if (spinner) setLoading(true);
       setError('');
+      let painted = null; // what we managed to show from the cache while the fresh answer is awaited
       try {
-        const fresh = await getCityWeather(id, { force });
-        lastFetchRef.current = Date.now();
-        setCity(fresh.city);
-        setData(fresh);
-        setStale(null);
-        setLastOpenedCity(userId, id);
-        cacheWeather(id, fresh);
-        // First moment real, live weather has actually been shown — the
-        // natural point to offer the home-screen widget, rather than
-        // immediately on login before the user has seen the app do
-        // anything. offerWidgetPin() itself only ever asks once.
-        offerWidgetPin();
-      } catch (err) {
-        if (err.status === 404) {
+        // Pull-to-refresh on My Location also takes a new GPS fix (keeps the last known one if there is none).
+        if (force && id === HERE_ID) await here.refresh({ language: i18n.language, timeout: 8000 });
+
+        const found = id === HERE_ID ? here.asCity(await here.get()) : await db.cities.get(id);
+        const c = found && !found.is_deleted ? found : null;
+        if (!c) {
           // The city was removed (maybe on another device) — nothing to show.
           navigate('/', { replace: true });
           return;
         }
-        // Offline or upstream down — fall back to the last good payload so
-        // the screen still shows something useful.
-        const cached = readCachedWeather(id);
-        if (cached?.data?.city) {
-          setCity(cached.data.city);
-          setData(cached.data);
-          setStale(cached.at);
-        } else {
-          setError(err.message);
+        setCity(c);
+        setLastOpenedCity(userId, id);
+
+        // Paint instantly from whatever is cached; the fresh forecast replaces it a moment later.
+        if (!hasDataRef.current) {
+          painted = await forecasts.peek(c);
+          if (painted) {
+            hasDataRef.current = true;
+            setData(painted.data);
+          }
         }
+
+        const result = await forecasts.get(c, { force });
+        lastFetchRef.current = Date.now();
+        hasDataRef.current = true;
+        setData(result.data);
+        setStale(result.stale ? result.at : null);
+        // First moment real, live weather has actually been shown — the
+        // natural point to offer the home-screen widget, rather than
+        // immediately on login before the user has seen the app do
+        // anything. offerWidgetPin() itself only ever asks once.
+        if (!result.stale) offerWidgetPin();
+      } catch (err) {
+        if (painted) setStale(painted.at); // refresh failed, but there is something to show
+        else if (!hasDataRef.current) setError(err.message);
       } finally {
         setLoading(false);
       }
     },
-    [id, navigate, userId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, navigate, userId, i18n.language]
   );
 
   useEffect(() => {
+    hasDataRef.current = false; // a different city (or a fresh mount): nothing on screen belongs to it yet
     load();
   }, [load]);
 

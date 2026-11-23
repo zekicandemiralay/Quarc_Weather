@@ -1,10 +1,48 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getOverview, deleteCity, reorderCities } from '../../lib/api';
+import { cityStore, here, forecasts, useSyncStore } from '../../lib/localData';
+import { useLive } from '../../lib/useLive';
 import { labelKey, iconFor, gradientCss } from '../../lib/weatherCodes';
 import { round, nowInTimezone } from '../../lib/format';
 import WeatherIcon from '../../components/WeatherIcon';
+import SyncBadge from '../../components/SyncBadge';
+
+/**
+ * Each card's forecast, loaded city by city: whatever is cached paints immediately, the fresh answer replaces it as
+ * it arrives, and one city failing leaves the others untouched.
+ */
+function useCityForecasts(cityList) {
+  const [map, setMap] = useState({});
+  const key = cityList.map((c) => `${c.id}:${c.latitude}:${c.longitude}`).join('|');
+
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      Promise.all(
+        cityList.map(async (c) => {
+          const cached = await forecasts.peek(c).catch(() => null);
+          if (alive && cached) setMap((m) => (m[c.id]?.data ? m : { ...m, [c.id]: { data: cached.data } }));
+          try {
+            const r = await forecasts.get(c);
+            if (alive) setMap((m) => ({ ...m, [c.id]: { data: r.data, stale: r.stale } }));
+          } catch (err) {
+            if (alive) setMap((m) => ({ ...m, [c.id]: { ...(m[c.id] || {}), error: err.message } }));
+          }
+        })
+      );
+    load();
+    const onVisible = () => document.visibilityState === 'visible' && load();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return map;
+}
 
 function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) {
   const code = city.current?.weather_code ?? city.today?.weather_code ?? 3;
@@ -22,12 +60,8 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
       <button onClick={onOpen} className="flex w-full items-start justify-between p-4 text-left text-white">
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 truncate text-xl font-medium leading-tight">
-            {/* A small live-location marker instead of replacing the real
-                place name — "Cankurtaran" is more useful than a generic
-                "My Location" label once we actually know where that is. */}
-            {/* !! coerces to a real boolean — is_current_location comes back
-                from SQLite as the integer 0/1, and `{0 && <X/>}` in JSX
-                renders the literal "0" as text instead of nothing. */}
+            {/* A small live-location marker instead of replacing the real place name — "Cankurtaran" is more
+                useful than a generic "My Location" label once we actually know where that is. */}
             {!!city.is_current_location && (
               <span aria-label={t('cities.myLocation')} title={t('cities.myLocation')} className="text-sm">
                 📍
@@ -37,7 +71,7 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
           </p>
           <p className="truncate text-xs text-white/75">{localTime}</p>
           <p className="mt-6 truncate text-sm text-white/90">
-            {city.error ? '—' : t(labelKey(code))}
+            {city.error && !city.current ? '—' : city.current ? t(labelKey(code)) : ''}
           </p>
         </div>
 
@@ -57,10 +91,7 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
       </button>
 
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100 md:opacity-60">
-        {/* My Location is always pinned first by the server regardless of
-            sort_order, so manually reordering it doesn't do anything —
-            hiding the arrows avoids offering a control that would appear to
-            silently fail. */}
+        {/* My Location belongs to this device and is always first, so there is nothing to reorder or remove. */}
         {!city.is_current_location && (
           <>
             <button
@@ -79,15 +110,15 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
             >
               ↓
             </button>
+            <button
+              onClick={onRemove}
+              aria-label={t('app.delete')}
+              className="rounded-full bg-black/25 px-2 text-xs text-white"
+            >
+              ✕
+            </button>
           </>
         )}
-        <button
-          onClick={onRemove}
-          aria-label={t('app.delete')}
-          className="rounded-full bg-black/25 px-2 text-xs text-white"
-        >
-          ✕
-        </button>
       </div>
     </li>
   );
@@ -96,56 +127,53 @@ function CityCard({ city, onOpen, onRemove, onMove, isFirst, isLast, t, i18n }) 
 export default function Cities() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const [cities, setCities] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const lastSync = useSyncStore((s) => s.lastSync);
+  const status = useSyncStore((s) => s.status);
 
-  const load = useCallback(async () => {
-    try {
-      setCities(await getOverview());
-      setError('');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rows = useLive(() => cityStore.listCities(), [], null); // null = still reading the local database
+  const hereRecord = useLive(() => here.get(), [], null);
+  const hereCity = useMemo(() => here.asCity(hereRecord), [hereRecord]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const all = useMemo(() => (hereCity ? [hereCity, ...(rows || [])] : rows || []), [hereCity, rows]);
+  const forecastMap = useCityForecasts(all);
 
-  async function handleRemove(city) {
+  /** A city row merged with its forecast, in the shape the card reads. */
+  const view = (c) => {
+    const f = forecastMap[c.id];
+    const d = f?.data;
+    return {
+      ...c,
+      current: d?.current,
+      today: d?.daily
+        ? {
+            weather_code: d.daily.weather_code?.[1],
+            temperature_2m_max: d.daily.temperature_2m_max?.[1],
+            temperature_2m_min: d.daily.temperature_2m_min?.[1],
+          }
+        : null,
+      timezone: d?.timezone || c.timezone,
+      error: f?.error || null,
+    };
+  };
+
+  function handleRemove(city) {
     if (!window.confirm(t('cities.removeConfirm', { name: city.name }))) return;
-    setCities((prev) => prev.filter((c) => c.id !== city.id));
-    try {
-      await deleteCity(city.id);
-    } catch {
-      load(); // put it back if the server disagreed
-    }
+    cityStore.removeCity(city.id);
   }
 
-  async function handleMove(index, delta) {
-    const next = [...cities];
-    const target = index + delta;
-    // A pinned My Location card (if present) always occupies index 0 server-
-    // side, so no regular city may swap into that slot.
-    const floor = next[0]?.is_current_location ? 1 : 0;
-    if (target < floor || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    setCities(next);
-    try {
-      await reorderCities(next.map((c) => c.id));
-    } catch {
-      load();
-    }
-  }
+  const manual = rows || [];
+  // The very first run on a new device with no connection to the server: nothing to show yet, and no way to
+  // fetch it — say so plainly instead of an empty "add your first city".
+  const waitingForFirstSync = rows !== null && manual.length === 0 && !hereCity && !lastSync && status === 'unreachable';
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="mx-auto w-full max-w-2xl px-4 pb-16">
         <header className="safe-top flex items-center justify-between py-4">
-          <h1 className="text-3xl font-bold tracking-tight">{t('cities.title')}</h1>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">{t('cities.title')}</h1>
+            <SyncBadge className="mt-1" />
+          </div>
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/settings')} aria-label={t('settings.title')} className="text-xl">
               ⚙
@@ -160,18 +188,16 @@ export default function Cities() {
           </div>
         </header>
 
-        {loading && <p className="py-12 text-center text-white/60">{t('app.loading')}</p>}
+        {rows === null && <p className="py-12 text-center text-white/60">{t('app.loading')}</p>}
 
-        {!loading && error && (
-          <div className="flex flex-col items-center gap-3 py-12">
-            <p className="text-sm text-white/70">{error}</p>
-            <button onClick={load} className="rounded-lg bg-white/10 px-4 py-2 text-sm">
-              {t('app.retry')}
-            </button>
+        {waitingForFirstSync && (
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <p className="text-lg font-medium">{t('sync.firstConnectTitle')}</p>
+            <p className="text-sm text-white/60">{t('sync.firstConnectHint')}</p>
           </div>
         )}
 
-        {!loading && !error && cities.length === 0 && (
+        {rows !== null && !waitingForFirstSync && all.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-20 text-center">
             <p className="text-lg font-medium">{t('cities.empty')}</p>
             <p className="text-sm text-white/60">{t('cities.emptyHint')}</p>
@@ -185,17 +211,26 @@ export default function Cities() {
         )}
 
         <ul className="flex flex-col gap-3">
-          {cities.map((city, i) => (
+          {hereCity && (
             <CityCard
-              key={city.id}
-              city={city}
+              key={hereCity.id}
+              city={view(hereCity)}
               t={t}
               i18n={i18n}
-              isFirst={i === 0 || (i === 1 && cities[0]?.is_current_location)}
-              isLast={i === cities.length - 1}
+              onOpen={() => navigate(`/city/${hereCity.id}`)}
+            />
+          )}
+          {manual.map((city, i) => (
+            <CityCard
+              key={city.id}
+              city={view(city)}
+              t={t}
+              i18n={i18n}
+              isFirst={i === 0}
+              isLast={i === manual.length - 1}
               onOpen={() => navigate(`/city/${city.id}`)}
               onRemove={() => handleRemove(city)}
-              onMove={(delta) => handleMove(i, delta)}
+              onMove={(delta) => cityStore.moveCity(city.id, delta)}
             />
           ))}
         </ul>

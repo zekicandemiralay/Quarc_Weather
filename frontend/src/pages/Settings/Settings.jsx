@@ -6,6 +6,8 @@ import useAuthStore from '../../store/authStore';
 import usePrefsStore from '../../store/prefsStore';
 import { getPlatform, getCurrentVersion, checkForUpdate, installUpdate } from '../../lib/updateCheck';
 import { getWidgetCount, openWidgetSettings, requestWidgetPin } from '../../lib/widgetBridge';
+import { sync, useSyncStore } from '../../lib/localData';
+import SyncBadge from '../../components/SyncBadge';
 
 function Section({ title, children }) {
   return (
@@ -40,6 +42,38 @@ function Segmented({ value, options, onChange }) {
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * How this device stands with the account's server. The list and the settings live on the device and sync in the
+ * background; this says when that last happened and lets you ask for it now. With Tailscale off the server is
+ * "unreachable" — a calm, expected state: everything keeps working and the changes wait.
+ */
+function SyncSection({ t }) {
+  const status = useSyncStore((s) => s.status);
+  const lastSync = useSyncStore((s) => s.lastSync);
+  const pending = useSyncStore((s) => s.pending);
+
+  return (
+    <Section title={t('sync.title')}>
+      <div className="px-4 py-3" data-testid="sync-section">
+        <p className="mb-3 text-xs text-white/60">{t('sync.hint')}</p>
+        <p className="mb-3 text-sm text-white/80">
+          {lastSync ? t('sync.lastSync', { time: new Date(lastSync).toLocaleString() }) : t('sync.never')}
+          {pending > 0 ? ` · ${t('sync.pending', { count: pending })}` : ''}
+        </p>
+        <SyncBadge className="mb-3" />
+        <button
+          onClick={() => sync.syncNow()}
+          disabled={status === 'syncing'}
+          className="w-full rounded-lg bg-white/10 py-2 text-sm font-medium disabled:opacity-50"
+          data-testid="sync-now"
+        >
+          {status === 'syncing' ? t('sync.syncing') : t('sync.syncNow')}
+        </button>
+      </div>
+    </Section>
   );
 }
 
@@ -232,6 +266,8 @@ export default function Settings() {
         </Section>
 
         {platform === 'android' && <WidgetSection t={t} />}
+
+        <SyncSection t={t} />
 
         <Section title={t('settings.about')}>
           <Row label={t('settings.version')}>

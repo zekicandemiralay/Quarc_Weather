@@ -63,21 +63,3 @@ export async function getCurrentPositionSafe({ timeout = 8000 } = {}) {
     );
   });
 }
-
-/**
- * The payload the backend expects for a live-location save. The coordinate
- * string is only a fallback label — the backend attempts a real reverse
- * geocode (nearest place name) server-side and uses that instead whenever it
- * succeeds; this is what's shown if that lookup is unavailable (offline,
- * upstream down) so the pin is never blank. `language` steers which
- * language the resolved name comes back in, where the place has one.
- */
-export function currentLocationPayload({ latitude, longitude }, language = 'en') {
-  return {
-    name: `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`,
-    latitude,
-    longitude,
-    is_current_location: true,
-    language,
-  };
-}
