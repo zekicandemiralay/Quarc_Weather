@@ -20,7 +20,9 @@ mkdir -p "$BACKUP_DIR"
 
 echo "Backing up to $BACKUP_DIR ..."
 
-BACKEND=$(docker ps -q --filter "label=com.docker.compose.service=backend" | head -1)
+# This project's own backend. (Not `docker ps --filter label=...service=backend`: every Quarc app calls its service
+# "backend", so that finds whichever app's container was built last — possibly another app's.)
+BACKEND=$(docker compose ps -q backend | head -1)
 if [ -z "$BACKEND" ]; then
   echo "ERROR: backend container not running. Start it first: docker compose up -d backend"
   exit 1

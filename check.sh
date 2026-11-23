@@ -33,7 +33,8 @@ echo "============================"
 echo ""
 echo "Containers"
 for svc in backend frontend; do
-  id=$(docker ps -q --filter "label=com.docker.compose.service=$svc" | head -1)
+  # This project's own containers (every Quarc app has a "backend" and a "frontend" service).
+  id=$(docker compose ps -q "$svc" | head -1)
   if [ -n "$id" ]; then
     status=$(docker inspect -f '{{.State.Status}}' "$id")
     if [ "$status" = "running" ]; then ok "$svc is running"; else bad "$svc is $status"; fi
@@ -58,7 +59,7 @@ else
   bad "quarcnet-shared missing — run: docker network create quarcnet-shared"
 fi
 
-FRONTEND=$(docker ps -q --filter "label=com.docker.compose.service=frontend" | head -1)
+FRONTEND=$(docker compose ps -q frontend | head -1)
 if [ -n "$FRONTEND" ]; then
   if docker exec "$FRONTEND" sh -c 'getent hosts quarc-auth >/dev/null 2>&1'; then
     ok "frontend can resolve quarc-auth"
@@ -120,7 +121,7 @@ fi
 # --- Database -----------------------------------------------------------
 echo ""
 echo "Database"
-BACKEND=$(docker ps -q --filter "label=com.docker.compose.service=backend" | head -1)
+BACKEND=$(docker compose ps -q backend | head -1)
 if [ -n "$BACKEND" ]; then
   if docker exec "$BACKEND" test -f /app/data/weather.db; then
     # Saved (not deleted) cities; deleted ones stay as tombstones so other devices learn of the deletion.

@@ -30,7 +30,9 @@ sleep 3
 docker compose stop backend
 
 echo "  · Restoring weather.db ..."
-BACKEND=$(docker ps -aq --filter "label=com.docker.compose.service=backend" | head -1)
+# This project's own backend, running or not. (Not `docker ps --filter label=...service=backend`: every Quarc app
+# calls its service "backend", so that could pick another app's container and copy this database into it.)
+BACKEND=$(docker compose ps -aq backend | head -1)
 if [ -z "$BACKEND" ]; then
   echo "ERROR: backend container not found. Run 'docker compose up -d backend' first."
   exit 1
