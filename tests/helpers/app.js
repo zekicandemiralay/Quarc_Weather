@@ -8,6 +8,9 @@
 //              weather right now is whatever it is. The test fetches the real forecast itself and edits it, so the
 //              screen is still rendering genuine data with one thing changed.
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const puppeteer = require('puppeteer');
 const jwt = require('jsonwebtoken');
 
@@ -18,6 +21,43 @@ const USER = 'zeki';
 const PASS = 'testpass123';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// --- city search ---------------------------------------------------------------------------------------------------
+// Almost every suite starts by adding a city, which asks Open-Meteo's geocoder. From a shared CI runner that endpoint
+// has been seen to give no answer for a while (the first attempt of several suites timed out waiting for search
+// results, the retry 30 s later passed) — and it is not what those suites are about. So the answer is the REAL
+// one, fetched from the live geocoder ONCE per distinct query (with retries, outside the 20 s the page would wait),
+// kept for a day in a file shared by all the suites, and replayed. A suite can opt out with `device.liveGeocoder = true`.
+const GEOCODER_HOST = 'geocoding-api.open-meteo.com';
+const GEOCODE_CACHE = path.join(os.tmpdir(), 'quarc-weather-test-geocode-cache.json');
+const GEOCODE_TTL_MS = 24 * 3600 * 1000;
+
+function readGeocodeCache() {
+  try { return JSON.parse(fs.readFileSync(GEOCODE_CACHE, 'utf8')); } catch { return {}; }
+}
+
+async function cachedGeocode(url) {
+  const hit = readGeocodeCache()[url];
+  if (hit && Date.now() - hit.at < GEOCODE_TTL_MS) return hit.body;
+
+  let last;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`geocoder answered ${res.status}`);
+      const body = await res.text();
+      JSON.parse(body); // only a real JSON answer is worth keeping
+      const cache = readGeocodeCache();
+      cache[url] = { at: Date.now(), body };
+      try { fs.writeFileSync(GEOCODE_CACHE, JSON.stringify(cache)); } catch { /* a read-only temp dir only costs speed */ }
+      return body;
+    } catch (e) {
+      last = e;
+      await sleep(1000 * 2 ** attempt); // 1, 2, 4, 8 s
+    }
+  }
+  throw last;
+}
 
 // --- a tiny test runner with the suites' usual output ------------------------------------------------------------
 function createRunner(title) {
@@ -94,6 +134,23 @@ async function newDevice(browser, { name = 'device', geo = null, viewport, timez
     if (device.blocked && u.origin === BASE && u.pathname.startsWith('/api/')) return req.abort('connectionrefused');
     // The weather provider down.
     if (device.providerBlocked && /open-meteo\.com$/.test(u.hostname)) return req.abort('connectionrefused');
+
+    // City search: a real Open-Meteo answer, fetched once per distinct query per run (see cachedGeocode).
+    if (u.hostname === GEOCODER_HOST && !device.liveGeocoder) {
+      (async () => {
+        try {
+          await req.respond({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'access-control-allow-origin': '*' },
+            body: await cachedGeocode(req.url()),
+          });
+        } catch (e) {
+          await req.continue().catch(() => {}); // no answer to replay: let the browser ask for itself
+        }
+      })();
+      return undefined;
+    }
 
     // Alter the real forecast on its way in.
     if (device.forecast.mutate && u.hostname === 'api.open-meteo.com' && u.pathname === '/v1/forecast') {

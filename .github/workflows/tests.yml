@@ -203,6 +203,24 @@ jobs:
           quota=$(grep -i "x-ratelimit-remaining" "$RUNNER_TEMP/om.headers" 2>/dev/null | tr -d '\r' | head -1)
           echo "::notice title=Open-Meteo forecast from this runner::$result ${quota}"
 
+      # City search. Several suites' first attempt timed out waiting for search results from a runner while the
+      # retry passed, and the forecast probe above was fine — so the geocoder is the suspect. This records its answer
+      # from here (the same request the app makes), three times, so a throttled runner shows up as a number.
+      # (The suites now replay one real answer per query instead of asking it again and again — tests/helpers/app.js.)
+      - name: Probe the Open-Meteo geocoder from this runner
+        continue-on-error: true
+        shell: bash
+        run: |
+          out=""
+          for i in 1 2 3; do
+            r=$(curl -s -m 15 -o /dev/null -D "$RUNNER_TEMP/geo.headers" -w "HTTP %{http_code} in %{time_total}s" \
+              "https://geocoding-api.open-meteo.com/v1/search?name=Berlin&count=5&language=en&format=json" || echo "no response within 15s")
+            out="$out [$r]"
+            sleep 2
+          done
+          quota=$(grep -i "x-ratelimit-remaining\|retry-after" "$RUNNER_TEMP/geo.headers" 2>/dev/null | tr -d '\r' | tr '\n' ' ')
+          echo "::notice title=Open-Meteo geocoder from this runner::$out $quota"
+
       # Suites that only need our own stack.
       - name: Browser suites
         env:
