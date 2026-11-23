@@ -23,8 +23,7 @@ name: Tests
 
 on:
   push:
-    # offline-sync: the branch the offline/sync work is developed on, so it is tested before it is merged.
-    branches: [main, offline-sync]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

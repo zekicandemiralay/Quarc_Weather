@@ -31,8 +31,7 @@ free tier is rate-limited per IP, and one CI run did fail with "Forecast unavail
 unchanged). So a failed browser suite is retried once after a 30 s pause: passing only on the retry is reported
 as a warning annotation (visible, never silent), and failing twice is a real failure.
 
-CI (`.github/workflows/tests.yml`) runs on every push to `main` (and to the `offline-sync` branch) and on pull
-requests:
+CI (`.github/workflows/tests.yml`) runs on every push to `main` and on pull requests:
 
 * `unit` — `unit`, `unit-provider`, `unit-widget`, `unit-sw`, `local-services`, `migration`, `sync-sim`
 * `android` — Gradle build + the JVM widget tests
