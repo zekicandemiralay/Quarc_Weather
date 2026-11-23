@@ -40,5 +40,13 @@ docker cp "$BACKUP_DIR/weather.db" "$BACKEND:/app/data/weather.db"
 echo "  · Starting all services ..."
 bash deploy.sh
 
+# The devices keep their own copy of the cities and settings, and remember how far they have synced. A backup is
+# older than what they hold, so without this they would never send the server what it lost. Renewing the epoch
+# tells every device "the server's data was replaced": each one re-sends everything it has (the newest edit of
+# every city still wins) the next time it reaches the server. Nothing on the devices is lost or overwritten.
+echo "  · Renewing the sync epoch so devices re-send anything newer than this backup ..."
+docker compose exec -T backend node src/scripts/new-epoch.js
+
 echo ""
 echo "Restore complete. Check status: bash check.sh"
+echo "Devices bring the server back up to date by themselves the next time they connect."

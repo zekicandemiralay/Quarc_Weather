@@ -3,8 +3,10 @@
 #  Quarc Weather — Health Check
 #    bash check.sh
 #
-#  Verifies containers, the shared auth wiring, SSL, the database,
-#  and live upstream reachability to Open-Meteo.
+#  Verifies containers, the shared auth wiring, SSL, the database and the
+#  sync endpoint. (The server holds only accounts' cities and settings —
+#  weather comes straight from the weather provider to each device — so
+#  there is nothing to check about Open-Meteo from here.)
 #
 #  Run this on the server (Linux). Under Git Bash on Windows, MSYS rewrites
 #  container-absolute paths such as /app/data into C:/Program Files/Git/app/data,
@@ -121,9 +123,14 @@ echo "Database"
 BACKEND=$(docker ps -q --filter "label=com.docker.compose.service=backend" | head -1)
 if [ -n "$BACKEND" ]; then
   if docker exec "$BACKEND" test -f /app/data/weather.db; then
-    CITIES=$(docker exec "$BACKEND" node -e "console.log(require('/app/src/db').getDb().prepare('SELECT COUNT(*) c FROM cities').get().c)" 2>/dev/null)
-    USERS=$(docker exec "$BACKEND" node -e "console.log(require('/app/src/db').getDb().prepare('SELECT COUNT(DISTINCT user_id) c FROM cities').get().c)" 2>/dev/null)
-    ok "weather.db present — $CITIES cities across $USERS users"
+    # Saved (not deleted) cities; deleted ones stay as tombstones so other devices learn of the deletion.
+    CITIES=$(docker exec "$BACKEND" node -e "console.log(require('/app/src/db').getDb().prepare('SELECT COUNT(*) c FROM cities WHERE is_deleted = 0').get().c)" 2>/dev/null)
+    USERS=$(docker exec "$BACKEND" node -e "console.log(require('/app/src/db').getDb().prepare('SELECT COUNT(DISTINCT user_id) c FROM cities WHERE is_deleted = 0').get().c)" 2>/dev/null)
+    if [ -n "$CITIES" ]; then
+      ok "weather.db present — $CITIES saved cities across $USERS users"
+    else
+      bad "weather.db present but the synced schema could not be read — has the backend been rebuilt? (bash deploy.sh)"
+    fi
   else
     warn "weather.db not created yet (normal before first login)"
   fi
@@ -140,11 +147,11 @@ else
 fi
 
 # Unauthenticated calls must be rejected, not served.
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE/api/cities" 2>/dev/null)
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE/api/sync/pull" 2>/dev/null)
 if [ "$code" = "401" ]; then
-  ok "GET /api/cities correctly requires auth (401)"
+  ok "GET /api/sync/pull correctly requires auth (401)"
 else
-  bad "GET /api/cities returned $code, expected 401"
+  bad "GET /api/sync/pull returned $code, expected 401"
 fi
 
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE/api/auth/login" \
@@ -153,21 +160,6 @@ if [ "$code" = "401" ]; then
   ok "POST /api/auth/login reaches quarc-auth (401 for bad credentials)"
 else
   bad "POST /api/auth/login returned $code, expected 401 — auth proxy may be misrouted"
-fi
-
-# --- Upstream -----------------------------------------------------------
-echo ""
-echo "Upstream (Open-Meteo)"
-if [ -n "$BACKEND" ]; then
-  if docker exec "$BACKEND" node -e "
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=41.01&longitude=28.98&current=temperature_2m&timezone=auto')
-      .then(r => r.ok ? process.exit(0) : process.exit(1))
-      .catch(() => process.exit(1))
-  " 2>/dev/null; then
-    ok "backend can reach api.open-meteo.com"
-  else
-    bad "backend cannot reach api.open-meteo.com — check DNS/egress"
-  fi
 fi
 
 # --- Summary ------------------------------------------------------------

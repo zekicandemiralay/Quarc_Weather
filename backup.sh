@@ -8,8 +8,10 @@
 #    weather.db  — saved cities and per-user preferences
 #    .env        — all secrets and config
 #
-#  Note: no forecast data is backed up. It's all re-fetched from
-#  Open-Meteo on demand — only the city lists are irreplaceable.
+#  Note: no forecast data is backed up. Devices fetch it from the weather
+#  provider themselves — only the city lists and settings live here. Every
+#  device also keeps its own copy of those, so after a restore they repair
+#  anything newer than the backup by themselves (see restore.sh).
 # ============================================================
 set -e
 
@@ -37,7 +39,8 @@ echo "  · Copying .env ..."
 cp .env "$BACKUP_DIR/.env"
 
 DB_SIZE=$(du -sh "$BACKUP_DIR/weather.db" | awk '{print $1}')
-CITY_COUNT=$(docker exec "$BACKEND" node -e "console.log(require('/app/src/db').getDb().prepare('SELECT COUNT(*) c FROM cities').get().c)" 2>/dev/null || echo "?")
+# Saved (not deleted) cities. The fallback covers a server that has not been updated to the synced schema yet.
+CITY_COUNT=$(docker exec "$BACKEND" node -e "const d=require('/app/src/db').getDb();let n;try{n=d.prepare('SELECT COUNT(*) c FROM cities WHERE is_deleted = 0').get().c}catch(e){n=d.prepare('SELECT COUNT(*) c FROM cities').get().c};console.log(n)" 2>/dev/null || echo "?")
 
 echo ""
 echo "Backup complete: $BACKUP_DIR"

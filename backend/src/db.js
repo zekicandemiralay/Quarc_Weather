@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { cityKey } = require('./services/cityKey');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'weather.db');
@@ -77,6 +78,12 @@ const SCHEMA_SQL = `
     language TEXT NOT NULL DEFAULT 'en',
     t_language TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
+  );
+
+  -- Facts about THIS database as a whole. Today just the epoch (see getEpoch).
+  CREATE TABLE IF NOT EXISTS server_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   );
 `;
 
@@ -157,4 +164,28 @@ function initDb() {
   migrate(getDb(), DB_PATH);
 }
 
-module.exports = { getDb, initDb, migrate, nowIso, SCHEMA_SQL };
+// --- epoch ---------------------------------------------------------------------
+//
+// Devices remember how far they have read (a cursor) and which rows they already uploaded. That is only valid
+// while the server keeps the history those marks refer to. If the server's data is REPLACED — restored from an
+// older backup, or rebuilt on a new server — a device's cursor is suddenly ahead of the server and it would never
+// re-send what the server lost: lists would silently diverge.
+//
+// The epoch is an id for "this incarnation of the data". Every pull carries it; a device that sees it CHANGE
+// re-sends everything it has (each row with its original edit time, so the newest edit still wins) and reads
+// from the start. It is created on first use, and restore.sh renews it after restoring (scripts/new-epoch.js).
+function getEpoch(database = getDb()) {
+  const row = database.prepare("SELECT value FROM server_meta WHERE key = 'epoch'").get();
+  if (row) return row.value;
+  return newEpoch(database);
+}
+
+function newEpoch(database = getDb()) {
+  const value = crypto.randomUUID();
+  database
+    .prepare("INSERT INTO server_meta (key, value) VALUES ('epoch', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(value);
+  return value;
+}
+
+module.exports = { getDb, initDb, migrate, nowIso, getEpoch, newEpoch, SCHEMA_SQL };

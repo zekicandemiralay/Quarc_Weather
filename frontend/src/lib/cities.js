@@ -17,6 +17,14 @@ function mutation(op, row, t) {
   return m;
 }
 
+/**
+ * The queue entry that (re)sends a row exactly as it stands now: a delete for a tombstone, otherwise an upsert,
+ * both carrying the row's own last edit time — so re-sending never makes an old edit look new.
+ */
+export function resendMutation(row) {
+  return mutation(row.is_deleted ? 'delete' : 'upsert', row, row.client_updated_at);
+}
+
 export function createCityStore(db, { now = () => new Date(), onWrite = () => {} } = {}) {
   const stamp = () => now().toISOString();
 

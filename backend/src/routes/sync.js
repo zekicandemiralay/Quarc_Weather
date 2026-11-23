@@ -10,7 +10,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { getDb, nowIso } = require('../db');
+const { getDb, nowIso, getEpoch } = require('../db');
 const { cityKey } = require('../services/cityKey');
 
 const PAGE_LIMIT = 1000;
@@ -81,6 +81,9 @@ router.get('/pull', (req, res) => {
   if (prefsRow && !hasMore && prefsRow.updated_at > cursor) cursor = prefsRow.updated_at;
 
   res.json({
+    // Identifies this incarnation of the data: it changes when the server is restored from a backup or rebuilt,
+    // which tells devices to re-send everything they hold (see getEpoch in db.js).
+    epoch: getEpoch(db),
     cursor,
     hasMore,
     cities: page.map(outCity),

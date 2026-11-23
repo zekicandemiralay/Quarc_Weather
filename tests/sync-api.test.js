@@ -84,6 +84,14 @@ const live = (p) => p.cities.filter((c) => !c.is_deleted);
     assert(p.cities.length === 0 && p.prefs === null && p.hasMore === false, JSON.stringify(p));
     return 'empty';
   });
+  await check("every pull carries the server's epoch, the same for every account and every call (it changes only when the data is replaced)", async () => {
+    const a = await pull(A);
+    const b = await pull(`bob-epoch-${RUN}`);
+    assert(typeof a.epoch === 'string' && a.epoch.length >= 16, `epoch was ${JSON.stringify(a.epoch)}`);
+    assert(a.epoch === b.epoch, 'two accounts saw different epochs');
+    assert(a.epoch === (await pull(A)).epoch, 'the epoch changed between two pulls');
+    return a.epoch.slice(0, 8) + '…';
+  });
   await check('adding a city: accepted, then visible to a pull with its derived id', async () => {
     const [r] = await push(A, [up(ISTANBUL)]);
     assert(r.status === 'ok', JSON.stringify(r));

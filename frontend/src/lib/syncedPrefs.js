@@ -95,5 +95,12 @@ export function createSyncedPrefs(db, { now = () => new Date(), onWrite = () => 
     return changed;
   }
 
-  return { get, set, mergeFromServer, OUTBOX_KEY };
+  /** Queues every setting this device holds, to be sent again (each field keeps its own edit time).
+   *  Call inside a transaction that includes db.prefs and db.outbox. */
+  async function requeueAll() {
+    const fields = await readFields();
+    if (Object.keys(fields).length) await db.outbox.put(outboxEntry(fields, now().toISOString()));
+  }
+
+  return { get, set, mergeFromServer, requeueAll, OUTBOX_KEY };
 }

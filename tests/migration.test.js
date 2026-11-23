@@ -158,7 +158,7 @@ test('a brand-new database just gets the schema (no legacy tables, no backup fil
   migrate(db, file);
 
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((r) => r.name);
-  assert.deepEqual(tables, ['cities', 'prefs_sync']);
+  assert.deepEqual(tables, ['cities', 'prefs_sync', 'server_meta']);
   assert.deepEqual(fs.readdirSync(dir).filter((f) => f.includes('.before-sync-')), []);
   db.close();
 });

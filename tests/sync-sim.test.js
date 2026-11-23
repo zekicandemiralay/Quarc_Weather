@@ -21,7 +21,7 @@ const BACKEND = path.join(__dirname, '..', 'backend');
 require(require.resolve('fake-indexeddb/auto', { paths: [FRONTEND] })); // indexedDB globals, before Dexie loads
 
 const express = require(require.resolve('express', { paths: [BACKEND] }));
-const { initDb } = require('../backend/src/db');
+const { initDb, getDb, newEpoch } = require('../backend/src/db');
 const syncRouter = require('../backend/src/routes/sync');
 
 const fe = (rel) => import(pathToFileURL(path.join(FRONTEND, 'src', 'lib', rel)).href);
@@ -346,6 +346,121 @@ function rng(seed) { // mulberry32: small, fast, deterministic
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+// --- the server's data is replaced (restore.sh / a new server) --------------------------------------------------
+//
+// What restore.sh does to the live database, done here to the real one: put an OLDER copy of the account's rows
+// back and renew the epoch.
+
+function serverRows(user) {
+  const db = getDb();
+  return {
+    cities: db.prepare('SELECT * FROM cities WHERE user_id = ?').all(user),
+    prefs: db.prepare('SELECT * FROM prefs_sync WHERE user_id = ?').all(user),
+  };
+}
+function restoreServer(user, snap, { renewEpoch = true } = {}) {
+  const db = getDb();
+  db.prepare('DELETE FROM cities WHERE user_id = ?').run(user);
+  db.prepare('DELETE FROM prefs_sync WHERE user_id = ?').run(user);
+  for (const r of snap.cities) {
+    const cols = Object.keys(r);
+    db.prepare(`INSERT INTO cities (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...cols.map((c) => r[c]));
+  }
+  for (const r of snap.prefs) {
+    const cols = Object.keys(r);
+    db.prepare(`INSERT INTO prefs_sync (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...cols.map((c) => r[c]));
+  }
+  if (renewEpoch) newEpoch();
+}
+
+test('a server restored from an OLDER backup is repaired by the devices: nothing they added, removed or changed is lost', async () => {
+  const user = unique('u');
+  const phone = makeDevice(user, 'phone');
+  const laptop = makeDevice(user, 'laptop');
+
+  clock.tick(); await phone.cities.addCity(P.istanbul);
+  clock.tick(); await phone.cities.addCity(P.berlin);
+  await phone.prefs.set({ language: 'tr' });
+  await settle([phone, laptop]);
+  const backup = serverRows(user); // <- the backup is taken here
+
+  // Life goes on after the backup...
+  clock.tick(); await phone.cities.addCity(P.sydney);
+  clock.tick(); await phone.cities.removeCity(M.cityKey.cityKey(P.berlin.latitude, P.berlin.longitude));
+  clock.tick(); await laptop.cities.addCity(P.tokyo);
+  clock.tick(); await laptop.prefs.set({ units: 'imperial' });
+  await settle([phone, laptop]);
+  const expected = ['Istanbul', 'Sydney', 'Tokyo'];
+  assert.deepEqual(await names(phone), expected, 'precondition');
+
+  // ...then the server is lost and restored from the backup: it has none of the above.
+  restoreServer(user, backup);
+  assert.deepEqual((await (await fetch(`http://127.0.0.1:${port}/api/sync/pull?since=`, { headers: { 'x-user': user } })).json()).cities.filter((c) => !c.is_deleted).map((c) => c.name).sort(), ['Berlin', 'Istanbul'], 'precondition: the server really went back in time');
+
+  await settle([phone, laptop]);
+  assert.deepEqual(await names(phone), expected, 'the phone keeps what it did');
+  assert.deepEqual(await names(laptop), expected, 'the laptop keeps what it did');
+  assert.equal(await snapshot(phone), await snapshot(laptop));
+  assert.equal((await phone.prefs.get()).units, 'imperial');
+  assert.equal((await phone.prefs.get()).language, 'tr');
+
+  // ...and the SERVER has been repaired too: a brand-new device gets the true, current state from it.
+  const tablet = makeDevice(user, 'tablet');
+  await tablet.sync.syncNow();
+  assert.deepEqual(await names(tablet), expected);
+  assert.equal((await tablet.prefs.get()).units, 'imperial');
+});
+
+test('a server that lost EVERYTHING (rebuilt empty) is repopulated from the devices', async () => {
+  const user = unique('u');
+  const phone = makeDevice(user, 'phone');
+  const laptop = makeDevice(user, 'laptop');
+  clock.tick(); await phone.cities.addCity(P.istanbul);
+  clock.tick(); await laptop.cities.addCity(P.cairo);
+  await settle([phone, laptop]);
+
+  restoreServer(user, { cities: [], prefs: [] }); // empty database, new epoch
+  await settle([phone, laptop]);
+
+  const tablet = makeDevice(user, 'tablet');
+  await tablet.sync.syncNow();
+  assert.deepEqual((await names(tablet)).sort(), ['Cairo', 'Istanbul']);
+});
+
+test('re-sending after a restore does not resurrect a city that was deleted before it', async () => {
+  const user = unique('u');
+  const phone = makeDevice(user, 'phone');
+  const laptop = makeDevice(user, 'laptop');
+  clock.tick(); await phone.cities.addCity(P.istanbul);
+  clock.tick(); await phone.cities.addCity(P.berlin);
+  await settle([phone, laptop]);
+  const backup = serverRows(user);
+
+  clock.tick(); await laptop.cities.removeCity(M.cityKey.cityKey(P.berlin.latitude, P.berlin.longitude));
+  await settle([phone, laptop]);
+  restoreServer(user, backup); // the backup still has Berlin alive; both devices hold the newer deletion
+  await settle([phone, laptop]);
+
+  assert.deepEqual(await names(phone), ['Istanbul']);
+  assert.deepEqual(await names(laptop), ['Istanbul']);
+  const tablet = makeDevice(user, 'tablet');
+  await tablet.sync.syncNow();
+  assert.deepEqual(await names(tablet), ['Istanbul'], 'the deletion survived the restore');
+});
+
+test('the epoch does not disturb normal syncing, and a brand-new device just remembers it', async () => {
+  const user = unique('u');
+  const phone = makeDevice(user, 'phone');
+  clock.tick(); await phone.cities.addCity(P.istanbul);
+  await settle([phone]);
+  const epoch = await M.localDb.getMeta(phone.db, 'server_epoch');
+  assert.ok(epoch, 'the device remembers the server epoch after its first sync');
+
+  await settle([phone]); // nothing changed: nothing is re-queued and the epoch is unchanged
+  assert.equal(await phone.db.outbox.count(), 0, 'an unchanged epoch must not refill the queue');
+  assert.equal(await M.localDb.getMeta(phone.db, 'server_epoch'), epoch);
+});
 
 test('RANDOMISED: 3 devices, random offline spells, wrong clocks, random edits — always converge', async () => {
   const SEEDS = 25;

@@ -5,22 +5,26 @@ name: Tests
 # a version tag — by then it's too late to find out the API test was red.)
 #
 # Four jobs, fastest first:
-#   unit      pure logic — alerts, hourly strip, formatting. No network. Seconds.
+#   unit      pure logic, no network: alerts, hourly strip, formatting, the weather-provider client, the
+#             local database (forecast cache, My Location), the widget's hand-over and the service worker —
+#             plus the sync engine against the real server code, with several simulated devices, and the
+#             one-time migration of the old server database.
 #   android   the native code: compiles it, links every resource (so a broken
 #             layout/manifest/translation fails here, not on the release tag), and
-#             runs the JVM tests for the widget's decision logic.
-#   api       the real backend + the real Open-Meteo. No browser.
+#             runs the JVM tests for the widget's decision logic and its weather parsing.
+#   api       the real backend (accounts' city/settings sync) over HTTP. No browser, no third party.
 #   browser   the built frontend in headless Chrome against the real backend and
 #             the real quarc-auth service (checked out from the Quarc_Store repo).
 #
-# The last two call live third-party services (Open-Meteo, and for the radar
+# The browser job calls live third-party services (Open-Meteo, and for the radar
 # suite RainViewer/Esri), exactly like running the suites by hand — "the
 # interesting failures live in the seams". A genuine upstream outage will turn
 # them red; re-run once before assuming it's the code.
 
 on:
   push:
-    branches: [main]
+    # offline-sync: the branch the offline/sync work is developed on, so it is tested before it is merged.
+    branches: [main, offline-sync]
   pull_request:
   workflow_dispatch:
 
@@ -37,8 +41,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package.json
+            frontend/package.json
+      # The frontend's own modules are what is under test (Dexie + fake-indexeddb for the local database), and
+      # the sync suites run the real server code (better-sqlite3), so both sets of dependencies are needed.
+      - name: Install dependencies
+        run: |
+          npm install --prefix backend
+          npm install --prefix frontend
       - name: Run unit tests
-        run: node --test tests/unit.test.js
+        run: >
+          node --test
+          tests/unit.test.js
+          tests/unit-provider.test.js
+          tests/unit-widget.test.js
+          tests/unit-sw.test.js
+          tests/local-services.test.js
+          tests/migration.test.js
+          tests/sync-sim.test.js
 
   android:
     name: Android (compile, resources, widget unit tests)
@@ -80,7 +102,7 @@ jobs:
           if-no-files-found: ignore
 
   api:
-    name: API tests (real backend + Open-Meteo)
+    name: Sync API tests (real backend)
     runs-on: ubuntu-latest
     env:
       JWT_SECRET: testsecret
@@ -105,12 +127,11 @@ jobs:
           done
           echo "backend never came up"; cat "$RUNNER_TEMP/backend.log"; exit 1
 
-      - name: API suite
-        run: NODE_PATH="$PWD/backend/node_modules" node tests/api.test.js
-      - name: Current-location suite
-        run: NODE_PATH="$PWD/backend/node_modules" node tests/location-api.test.js
-      - name: Widget contract suite
-        run: NODE_PATH="$PWD/backend/node_modules" node tests/widget-api.test.js
+      # The server now only holds accounts' cities and settings (weather comes straight from the provider
+      # to the device), so this is the whole of its API: auth gate, per-user isolation, push/pull, last-
+      # writer-wins, tombstones, validation, timestamp clamping.
+      - name: Sync API suite
+        run: NODE_PATH="$PWD/backend/node_modules" node tests/sync-api.test.js
 
       - name: Backend log (on failure)
         if: failure()
@@ -197,7 +218,7 @@ jobs:
           # after a pause. A suite that only passes on the retry is reported as a warning — visible, not
           # silent — and a suite that fails twice is a real failure.
           failed=0
-          for suite in ui timezone weather-screen widget-settings weather-effects daily-briefing; do
+          for suite in ui timezone weather-screen widget-settings weather-effects daily-briefing offline-sync-ui; do
             echo "::group::$suite"
             passed=0
             first=""

@@ -1,5 +1,6 @@
 import { getMeta, setMeta, clearAccountData } from './localDb.js';
 import { mergeFields } from './syncedPrefs.js';
+import { resendMutation } from './cities.js';
 
 // Sync engine — the same design as Quarc Calendar's. The UI never waits on the network: every edit is written
 // to the local database and queued in the `outbox` (lib/cities.js, lib/syncedPrefs.js). This module drains the
@@ -107,10 +108,33 @@ export function createSync(db, { request, prefs, setStatus = () => {}, onAuthLos
 
   // ---- Pull -----------------------------------------------------------------
 
+  /**
+   * The server's data was REPLACED (restored from a backup, rebuilt on a new server): its epoch is not the one
+   * this device last saw. Our cursor and our "already uploaded" marks then refer to a history the server no
+   * longer has, so queue everything we hold to be sent again and read from the start. Each row is re-sent with
+   * its own edit time, so the newest edit still wins and nothing old is promoted.
+   */
+  async function resyncFromScratch(epoch) {
+    await db.transaction('rw', db.cities, db.prefs, db.outbox, db.meta, async () => {
+      for (const row of await db.cities.toArray()) await db.outbox.put(resendMutation(row));
+      await prefs.requeueAll();
+      await setMeta(db, 'cursor', '');
+      await setMeta(db, 'server_epoch', epoch);
+    });
+  }
+
+  /** @returns {Promise<{resync: boolean}>} resync = true when the queue was refilled and must be pushed again */
   async function pullChanges() {
     for (;;) {
       const since = await getMeta(db, 'cursor', '');
       const data = await request(`/api/sync/pull?since=${encodeURIComponent(since)}`);
+
+      const knownEpoch = await getMeta(db, 'server_epoch', null);
+      if (data.epoch && knownEpoch && data.epoch !== knownEpoch) {
+        await resyncFromScratch(data.epoch);
+        return { resync: true }; // this page was read with the old history's cursor: discard it
+      }
+      if (data.epoch && !knownEpoch) await setMeta(db, 'server_epoch', data.epoch); // first contact: just remember it
 
       await db.transaction('rw', db.cities, db.prefs, db.outbox, db.meta, async () => {
         for (const row of data.cities) {
@@ -123,7 +147,7 @@ export function createSync(db, { request, prefs, setStatus = () => {}, onAuthLos
         if (data.prefs) await prefs.mergeFromServer(data.prefs.fields);
         await setMeta(db, 'cursor', data.cursor);
       });
-      if (!data.hasMore) return;
+      if (!data.hasMore) return { resync: false };
     }
   }
 
@@ -143,7 +167,11 @@ export function createSync(db, { request, prefs, setStatus = () => {}, onAuthLos
       try {
         await report({ status: 'syncing', error: null });
         await pushOutbox();
-        await pullChanges();
+        // A changed server epoch refills the queue: send it, then read the server's side from the start.
+        if ((await pullChanges()).resync) {
+          await pushOutbox();
+          await pullChanges();
+        }
         const when = new Date().toISOString();
         await setMeta(db, 'last_sync', when);
         await report({ status: 'idle', lastSync: when, error: null });
