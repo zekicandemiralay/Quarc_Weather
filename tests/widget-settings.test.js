@@ -16,11 +16,12 @@
 
 const puppeteer = require('puppeteer');
 const path = require('path');
+const H = require('./helpers/app');
 
-const BASE = 'http://127.0.0.1:4173';
+const BASE = H.BASE;
 const SHOTS = path.join(__dirname, 'shots-widget-settings');
-const USER = 'zeki';
-const PASS = 'testpass123';
+const USER = H.USER;
+const PASS = H.PASS;
 
 let pass = 0;
 let fail = 0;
@@ -70,20 +71,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       page.waitForFunction(() => !document.body.innerText.includes('Sign in to your Quarc account'), { timeout: 20000 }),
     ]);
   };
-  const setLang = (page, language) =>
-    page.evaluate(
-      (l) => fetch('/api/prefs', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: l }) }),
-      language
-    );
   const openSettings = async (page) => {
     await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle2', timeout: 30000 });
     await page.waitForSelector('h1', { timeout: 15000 }); // the page title — present in every language
+    await sleep(500);
+  };
+  // The language is a synced setting; change it the way a person does, with the buttons on the Settings screen.
+  // (The buttons carry each language's own name, so this works whichever language the screen is in.)
+  const setLang = async (page, language) => {
+    await openSettings(page);
+    const label = language === 'tr' ? 'Türkçe' : 'English';
+    await page.evaluate((l) => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === l).click(), label);
     await sleep(500);
   };
   const text = (page) => page.evaluate(() => document.body.textContent);
 
   await step('login on the plain web app and reset the language', async () => {
     await login(web);
+    // Earlier suites may have left the account in another language, and this one matches English text.
+    await H.resetAccount(await H.currentUserId({ page: web }));
     await setLang(web, 'en');
     return 'authenticated';
   });
@@ -232,7 +238,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await page.screenshot({ path: path.join(SHOTS, 'turkish.png') });
       return 'Turkish strings';
     } finally {
-      await setLang(page, 'en'); // never leave the account in Turkish for the next suite
+      await setLang(page, 'en');
+      // Never leave the account in Turkish for the next suite. The in-app change may not have synced yet when this
+      // browser closes, so put the account itself back too.
+      await H.resetAccount(await H.currentUserId({ page }));
     }
   });
 

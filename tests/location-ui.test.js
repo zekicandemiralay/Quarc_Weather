@@ -1,254 +1,151 @@
-// Drives the real built frontend in headless Chrome with mocked geolocation
-// to verify the app's landing behavior end to end: current location first,
-// falling back to the last-opened city, falling back to the plain list.
+// The app's landing behaviour end to end, with mocked GPS: My Location first, falling back to the last-opened city,
+// falling back to the plain list — and now also with the Quarc server UNREACHABLE (Tailscale off), where the answer
+// has to come from the device's own data. (The old app asked the server whether the last city still existed, so a cold
+// start without the server fell through to a list that could not load.)
 
-const puppeteer = require('puppeteer');
 const path = require('path');
+const fs = require('fs');
+const H = require('./helpers/app');
 
-const BASE = 'http://127.0.0.1:4173';
 const SHOTS = path.join(__dirname, 'shots-location');
-const USER = 'zeki';
-const PASS = 'testpass123';
+const ISTANBUL = { latitude: 41.0082, longitude: 28.9784 };
 
-let pass = 0;
-let fail = 0;
-function ok(n, extra = '') { console.log(`  [ OK ]  ${n}${extra ? '  — ' + extra : ''}`); pass++; }
-function bad(n, d) { console.log(`  [FAIL]  ${n}  — ${d}`); fail++; }
-async function step(name, fn) {
-  try { ok(name, await fn()); } catch (e) { bad(name, e.message.split('\n')[0]); }
+const pathname = (d) => d.page.evaluate(() => location.pathname);
+async function waitPath(d, re, timeout = 25000) {
+  await d.page.waitForFunction((src) => new RegExp(src).test(location.pathname), { timeout }, re.source);
 }
-function assert(c, m) { if (!c) throw new Error(m); }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function login(page) {
-  await page.goto(BASE, { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForSelector('input[placeholder="Username"]', { timeout: 15000 });
-  await page.type('input[placeholder="Username"]', USER);
-  await page.type('input[placeholder="Password"]', PASS);
-  await Promise.all([
-    page.click('button[type="submit"]'),
-    page.waitForFunction(
-      () => !document.body.innerText.includes('Sign in to your Quarc account'),
-      { timeout: 20000 }
-    ),
-  ]);
-}
-
-async function resetServerState(page) {
-  await page.evaluate(async () => {
-    const cities = await fetch('/api/cities', { credentials: 'include' }).then((r) => r.json());
-    await Promise.all(cities.map((c) => fetch(`/api/cities/${c.id}`, { method: 'DELETE', credentials: 'include' })));
-  });
-  await page.evaluate(() => localStorage.clear());
+/** Cold start: a full page load, then wait for the landing decision to settle. */
+async function coldStart(d) {
+  await d.page.goto(H.BASE, { waitUntil: 'networkidle2' });
+  await H.sleep(2500); // the redirect decision awaits a GPS fix (up to 8 s) — give it room
 }
 
 (async () => {
-  const fs = require('fs');
   fs.mkdirSync(SHOTS, { recursive: true });
+  const t = H.createRunner('Quarc Weather — landing behaviour (My Location → last city → list)');
+  const browser = await H.launch();
 
-  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  // ---------------------------------------------------------------- a device that HAS location
+  const gps = await H.freshSession(browser, { name: 'gps-phone', geo: ISTANBUL });
+  t.section('Location granted');
 
-  console.log('\nQuarc Weather — location landing behavior\n==========================================\n');
+  await t.step('the app lands on My Location with a real resolved place name, not raw coordinates', async () => {
+    await H.goList(gps).catch(() => {}); // (may or may not redirect first — just settle)
+    await coldStart(gps);
+    await waitPath(gps, /^\/city\/here$/);
+    await gps.page.waitForSelector('.sky h1', { timeout: 20000 });
+    const name = await gps.page.$eval('.sky h1', (h) => h.textContent.trim());
+    t.assert(!/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(name), `showing raw coordinates: ${name}`);
+    t.assert(/Cankurtaran|Fatih|Istanbul|İstanbul|Sultanahmet/i.test(name), `no recognizable Istanbul-area name: ${name}`);
+    await gps.page.screenshot({ path: path.join(SHOTS, '1-landing-my-location.png') });
+    return name;
+  });
 
-  // ---- Scenario 1: fresh account, location granted → lands on My Location ----
-  {
-    // A dedicated, isolated context per scenario — separate cookies AND
-    // separate permission grants. Reusing one context across scenarios was
-    // the bug in an earlier version of this test: scenario 2 silently
-    // inherited scenario 1's login session, so its own login() call timed
-    // out waiting for a form that was never going to appear.
-    const context = await browser.createBrowserContext();
-    const page = await context.newPage();
-    await page.setViewport({ width: 430, height: 932, deviceScaleFactor: 2 });
-    await context.overridePermissions(BASE, ['geolocation']);
-    // Istanbul coordinates — distinctive enough to confirm in the UI.
-    await page.setGeolocation({ latitude: 41.0082, longitude: 28.9784 });
+  await t.step('the in-app back button shows My Location pinned first, with no reorder or delete controls', async () => {
+    await gps.page.evaluate(() => Array.from(document.querySelectorAll('header button')).find((b) => b.innerText.includes('‹')).click());
+    await gps.page.waitForSelector('button[aria-label="Add city"]', { timeout: 15000 });
+    const first = await gps.page.$eval('ul > li', (li) => ({
+      text: li.textContent,
+      arrows: li.querySelectorAll('button[aria-label="Move up"], button[aria-label="Move down"]').length,
+      remove: li.querySelectorAll('button[aria-label="Delete"]').length,
+    }));
+    t.assert(first.text.includes('📍'), `first card has no pin marker: ${first.text.slice(0, 50)}`);
+    t.assert(first.arrows === 0 && first.remove === 0, `My Location offers ${first.arrows} arrows / ${first.remove} delete`);
+    return 'pinned first, read-only';
+  });
 
-    await login(page);
-    await resetServerState(page);
+  await t.step('staying on the list via in-app navigation does NOT re-redirect (a reload does)', async () => {
+    await gps.page.click('button[aria-label="Settings"]');
+    await waitPath(gps, /^\/settings$/, 10000);
+    await gps.page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.innerText.includes('‹')).click());
+    await H.sleep(2500);
+    t.assert((await pathname(gps)) === '/', `after in-app navigation the path is ${await pathname(gps)}`);
+    await coldStart(gps);
+    await waitPath(gps, /^\/city\/here$/);
+    return 'back stays on the list; reload lands on My Location';
+  });
 
-    await step('fresh login + granted location → lands directly on a weather screen, not the list', async () => {
-      await page.goto(BASE, { waitUntil: 'networkidle2' });
-      await page.waitForFunction(
-        () => window.location.pathname.startsWith('/city/') || document.body.innerText.includes('No cities yet'),
-        { timeout: 15000 }
-      );
-      await sleep(2000);
-      const path = await page.evaluate(() => window.location.pathname);
-      assert(path.startsWith('/city/'), `landed on ${path}, expected /city/:id`);
-      await page.screenshot({ path: `${SHOTS}/1-landed-on-location.png` });
-      return path;
-    });
+  await t.step('My Location never reaches the server — only manually added cities sync', async () => {
+    await H.goList(gps);
+    await H.addCityByName(gps, 'Berlin', 'Berlin');
+    const s = await H.waitServer(gps.userId, (x) => x.cities.includes('Berlin'), 'Berlin');
+    t.assert(s.cities.join() === 'Berlin', `server list: ${s.cities.join()}`);
+    t.assert(!s.all.some((c) => /Cankurtaran|Fatih|Istanbul|İstanbul/i.test(c.name) && !c.is_deleted), 'a live-location pin reached the server');
+    return 'server holds only Berlin';
+  });
 
-    await step('the landing screen shows a real resolved place name, not raw coordinates', async () => {
-      const txt = await page.evaluate(() => document.body.innerText);
-      assert(!/41\.0/.test(txt), `still showing raw coordinates: ${txt.slice(0, 80)}`);
-      assert(/Istanbul/i.test(txt), `no recognizable Istanbul-area name found: ${txt.slice(0, 80)}`);
-      assert(/\d+°/.test(txt), 'no temperature shown');
-      return 'confirmed — a real place name is shown, not "My Location" or coordinates';
-    });
+  await t.step('with the server UNREACHABLE and location available, the app still lands on My Location', async () => {
+    gps.blocked = true;
+    await coldStart(gps);
+    await waitPath(gps, /^\/city\/here$/);
+    await gps.page.waitForFunction(() => /Hourly forecast/i.test(document.body.textContent), { timeout: 25000 });
+    gps.blocked = false;
+    return 'GPS + provider need no server';
+  });
 
-    await step('My Location was saved to the city list with a real resolved name (single pinned row)', async () => {
-      const cities = await page.evaluate(() =>
-        fetch('/api/cities', { credentials: 'include' }).then((r) => r.json())
-      );
-      const pins = cities.filter((c) => c.is_current_location);
-      assert(pins.length === 1, `expected 1 pinned row, found ${pins.length}`);
-      assert(Math.abs(pins[0].latitude - 41.0082) < 0.01, `latitude mismatch: ${pins[0].latitude}`);
-      assert(pins[0].name !== '41.008, 28.978', `reverse geocode did not resolve — still raw coords: ${pins[0].name}`);
-      assert(pins[0].admin1 && /istanbul/i.test(pins[0].admin1), `unexpected admin1: ${pins[0].admin1}`);
-      return `1 pinned row: "${pins[0].name}", ${pins[0].admin1}, ${pins[0].country}`;
-    });
+  // ---------------------------------------------------------------- a device WITHOUT location
+  t.section('Location denied');
+  const dn = await H.newDevice(browser, { name: 'no-gps-phone', geo: null });
+  let berlinPath;
 
-    await step('the in-app back button shows My Location pinned first, no reorder arrows on it', async () => {
-      // Deliberately an in-app click, not page.goto() — goto() is a real
-      // reload, which legitimately re-triggers landing resolution (that IS
-      // "opening the app" again). The back button is client-side routing and
-      // must NOT re-trigger it, or the list would be unreachable.
-      await page.click('header button');
-      await page.waitForFunction(() => !!document.querySelector('button[aria-label="Add city"]'), { timeout: 15000 });
-      await page.waitForFunction(() => /\d+°/.test(document.body.innerText), { timeout: 15000 });
-      const txt = await page.evaluate(() => document.body.innerText);
-      // The list card shows the resolved place name + a 📍 marker + local
-      // time — it deliberately does NOT repeat admin1/country the way the
-      // detail page's subtitle does, so "Istanbul" itself isn't expected
-      // here; check for the actual suburb name plus the marker instead.
-      assert(/Cankurtaran/i.test(txt), `list does not show the resolved place name: ${txt.slice(0, 150)}`);
-      assert(txt.includes('📍'), `list is missing the live-location marker: ${txt.slice(0, 150)}`);
-      assert(!/41\.0/.test(txt), `list still shows raw coordinates: ${txt.slice(0, 150)}`);
-      // aria-label text isn't rendered content, so check the DOM directly
-      // rather than innerText (which only shows the visible "↑"/"↓" glyphs).
-      const hasMoveButtons = await page.evaluate(() => {
-        const firstCard = document.querySelector('ul > li');
-        return !!firstCard?.querySelector('button[aria-label="Move up"], button[aria-label="Move down"]');
-      });
-      assert(!hasMoveButtons, 'reorder arrows should be hidden for the pinned card');
-      await page.screenshot({ path: `${SHOTS}/2-list-with-pin.png` });
-      return 'shown';
-    });
+  await t.step('nothing opened yet → the plain list (no redirect)', async () => {
+    await H.login(dn);
+    await H.sleep(2500);
+    t.assert((await pathname(dn)) === '/', `landed on ${await pathname(dn)}`);
+    await dn.page.waitForSelector('button[aria-label="Add city"]', { timeout: 10000 });
+    await H.waitCards(dn, { has: ['Berlin'] }); // downloaded from the account on first sync
+    return 'list';
+  });
 
-    await step('staying on the list via in-app navigation does not re-redirect', async () => {
-      const path = await page.evaluate(() => window.location.pathname);
-      assert(path === '/', `expected to still be on /, got ${path}`);
-      return 'confirmed — the in-session flag correctly prevented a bounce-back';
-    });
+  await t.step('the last-opened city is where the app lands next time', async () => {
+    await H.cardButton(dn, 'Berlin');
+    await waitPath(dn, /^\/city\/c_/, 10000);
+    berlinPath = await pathname(dn);
+    await dn.page.waitForSelector('.sky h1', { timeout: 20000 });
+    await coldStart(dn);
+    await waitPath(dn, /^\/city\/c_/);
+    t.assert((await pathname(dn)) === berlinPath, `landed on ${await pathname(dn)}, expected ${berlinPath}`);
+    await dn.page.screenshot({ path: path.join(SHOTS, '2-landing-last-city.png') });
+    return 'Berlin';
+  });
 
-    await step('a genuine reload while on the list DOES re-resolve (matches "opening the app")', async () => {
-      await page.reload({ waitUntil: 'networkidle2' });
-      await page.waitForFunction(() => window.location.pathname.startsWith('/city/'), { timeout: 15000 });
-      const path = await page.evaluate(() => window.location.pathname);
-      assert(path.startsWith('/city/'), `expected a redirect back to /city/:id, got ${path}`);
-      return `redirected again on reload, as a fresh app-open should: ${path}`;
-    });
+  await t.step('with the server UNREACHABLE the last-opened city is still found — from the device, not the server', async () => {
+    dn.blocked = true;
+    await coldStart(dn);
+    await waitPath(dn, /^\/city\/c_/);
+    t.assert((await pathname(dn)) === berlinPath, `landed on ${await pathname(dn)}`);
+    await dn.page.waitForFunction(() => /Hourly forecast/i.test(document.body.textContent), { timeout: 25000 });
+    const onLogin = await dn.page.evaluate(() => !!document.querySelector('input[placeholder="Username"]'));
+    t.assert(!onLogin, 'bounced to the login screen');
+    dn.blocked = false;
+    return 'cold start without the server → Berlin';
+  });
 
-    await context.close();
-  }
+  await t.step('no live-location pin is created when location is denied', async () => {
+    const s = await H.serverState(dn.userId = await H.currentUserId(dn));
+    t.assert(!s.all.some((c) => /Cankurtaran|Fatih|Istanbul/i.test(c.name) && !c.is_deleted), 'a pin exists');
+    return 'confirmed';
+  });
 
-  // ---- Scenario 2: location denied, but a last-opened city exists → falls back ----
-  {
-    const context = await browser.createBrowserContext();
-    const page = await context.newPage();
-    await page.setViewport({ width: 430, height: 932 });
-    // Denying via overridePermissions with an empty list makes the Permissions
-    // API report 'denied' without the OS ever prompting.
-    await context.overridePermissions(BASE, []);
+  await t.step('if the last-opened city was deleted, the app falls back to the list', async () => {
+    await H.goList(dn).catch(() => {});
+    await H.waitCards(dn, { has: ['Berlin'] });
+    dn.page.once('dialog', (dlg) => dlg.accept());
+    await H.cardButton(dn, 'Berlin', 'button[aria-label="Delete"]');
+    await H.sleep(800);
+    await coldStart(dn);
+    t.assert((await pathname(dn)) === '/', `landed on ${await pathname(dn)}`);
+    return 'list';
+  });
 
-    await login(page);
-    await resetServerState(page);
-
-    let savedCityId;
-    await step('setup: save Berlin, then actually open it (handleAdd only saves + returns to the list)', async () => {
-      await page.goto(`${BASE}/add`, { waitUntil: 'networkidle2' });
-      await page.waitForSelector('input', { timeout: 10000 });
-      await page.type('input', 'Berlin');
-      // On a timeout, say WHY: this step has failed on a CI runner for reasons that can't be seen from
-      // outside, so the message carries the geocode responses' status codes and what the page showed.
-      const geocodeStatuses = [];
-      const onResponse = (r) => {
-        if (r.url().includes('/api/geocode/search')) geocodeStatuses.push(r.status());
-      };
-      page.on('response', onResponse);
-      try {
-        await page.waitForFunction(() => document.querySelectorAll('li button').length > 0, { timeout: 20000 });
-      } catch (e) {
-        const shown = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 160));
-        throw new Error(
-          `no search results after 20s [geocode responses: ${geocodeStatuses.join(',') || 'none'}; page: "${shown}"]`
-        );
-      } finally {
-        page.off('response', onResponse);
-      }
-      await page.click('li button');
-      // handleAdd navigates to "/" on success — the list, not the new city's
-      // detail page — so "last opened" isn't set until the card is actually
-      // tapped open.
-      await page.waitForFunction(() => window.location.pathname === '/', { timeout: 15000 });
-      await sleep(1500);
-      await page.click('ul > li button');
-      await page.waitForFunction(() => window.location.pathname.startsWith('/city/'), { timeout: 15000 });
-      await sleep(1500);
-      savedCityId = await page.evaluate(() => window.location.pathname.split('/').pop());
-      assert(savedCityId && savedCityId.length > 10, `didn't capture a real city id: "${savedCityId}"`);
-      return `opened, id ${savedCityId.slice(0, 8)}…`;
-    });
-
-    await step('reloading the app (denied location) lands back on that same city', async () => {
-      await page.goto(BASE, { waitUntil: 'networkidle2' });
-      await page.waitForFunction(
-        () => window.location.pathname.startsWith('/city/') || document.readyState === 'complete',
-        { timeout: 15000 }
-      );
-      await sleep(2500);
-      const path = await page.evaluate(() => window.location.pathname);
-      assert(path === `/city/${savedCityId}`, `expected /city/${savedCityId}, got ${path}`);
-      const txt = await page.evaluate(() => document.body.innerText);
-      assert(/Berlin/.test(txt), 'landing screen does not show Berlin');
-      await page.screenshot({ path: `${SHOTS}/3-fallback-last-city.png` });
-      return `landed on Berlin via last-opened fallback`;
-    });
-
-    await step('no live-location pin was created (location was denied)', async () => {
-      const cities = await page.evaluate(() =>
-        fetch('/api/cities', { credentials: 'include' }).then((r) => r.json())
-      );
-      const pins = cities.filter((c) => c.is_current_location);
-      assert(pins.length === 0, `expected 0 pins, found ${pins.length}`);
-      return 'confirmed';
-    });
-
-    await context.close();
-  }
-
-  // ---- Scenario 3: no location, no saved cities → shows the empty list ----
-  {
-    const context = await browser.createBrowserContext();
-    const page = await context.newPage();
-    await page.setViewport({ width: 430, height: 932 });
-    await context.overridePermissions(BASE, []);
-
-    await login(page);
-    await resetServerState(page);
-
-    await step('nothing available at all → shows the plain empty-state list', async () => {
-      await page.goto(BASE, { waitUntil: 'networkidle2' });
-      await sleep(2500);
-      const path = await page.evaluate(() => window.location.pathname);
-      assert(path === '/', `expected to land on /, got ${path}`);
-      const txt = await page.evaluate(() => document.body.innerText);
-      assert(/No cities yet/.test(txt), 'empty state not shown');
-      await page.screenshot({ path: `${SHOTS}/4-empty-fallback.png` });
-      return 'empty state shown, no crash';
-    });
-
-    await context.close();
-  }
+  await t.step('no page exceptions or console errors on either device', async () => {
+    const all = [...gps.pageErrors, ...gps.errors, ...dn.pageErrors, ...dn.errors];
+    t.assert(all.length === 0, all.slice(0, 3).join(' | '));
+    return 'none';
+  });
 
   await browser.close();
-
-  console.log('\n==========================================');
-  console.log(`  ${pass} passed, ${fail} failed`);
-  console.log(`  screenshots: ${SHOTS}\n`);
-  process.exit(fail === 0 ? 0 : 1);
+  t.finish(`screenshots: ${SHOTS}`);
 })().catch((e) => {
   console.error('HARNESS ERROR:', e);
   process.exit(1);

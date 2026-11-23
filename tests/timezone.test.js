@@ -1,145 +1,80 @@
-// Proves the cross-timezone hour bug is actually fixed: emulates the
-// browser being physically in New York (UTC-4/5) while viewing Istanbul
-// (UTC+3) — a ~7-9 hour gap, nothing that could coincidentally cancel out.
-// Before the fix, every displayed hour (the "Now" cell, hourly labels,
-// sunrise/sunset) would have been shifted by exactly that gap, because
-// Open-Meteo's hourly.time strings are naive local wall-clock (no UTC
-// offset marker) and `new Date(iso)` silently re-interprets them in
-// whichever zone the *viewer* happens to be in.
+// The app is viewed with the browser's timezone emulated to America/New_York while showing Istanbul — a 7–9 hour gap
+// that can't coincidentally cancel out — proving every time on screen is computed in the CITY's timezone rather than
+// silently re-interpreted in the viewer's. (Open-Meteo's hourly/daily timestamps are naive wall-clock strings in the
+// city's own zone; reading them as device-local time is exactly the bug this guards against.)
 
-const puppeteer = require('puppeteer');
 const path = require('path');
+const fs = require('fs');
+const H = require('./helpers/app');
 
-const BASE = 'http://127.0.0.1:4173';
 const SHOTS = path.join(__dirname, 'shots-timezone');
-const USER = 'zeki';
-const PASS = 'testpass123';
+const CITY_TZ = 'Europe/Istanbul';
 
-let pass = 0;
-let fail = 0;
-function ok(n, extra = '') { console.log(`  [ OK ]  ${n}${extra ? '  — ' + extra : ''}`); pass++; }
-function bad(n, d) { console.log(`  [FAIL]  ${n}  — ${d}`); fail++; }
-async function step(name, fn) {
-  try { ok(name, await fn()); } catch (e) { bad(name, e.message.split('\n')[0]); }
+const pad = (n) => String(n).padStart(2, '0');
+function istanbulNow() {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: CITY_TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  return { hour: Number(p.find((x) => x.type === 'hour').value), minute: Number(p.find((x) => x.type === 'minute').value) };
 }
-function assert(c, m) { if (!c) throw new Error(m); }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const fs = require('fs');
   fs.mkdirSync(SHOTS, { recursive: true });
+  const t = H.createRunner('Quarc Weather — timezone correctness (viewer in New York, city in Istanbul)');
+  const browser = await H.launch();
+  const d = await H.freshSession(browser, { name: 'tz', timezone: 'America/New_York' });
+  const { page } = d;
 
-  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  await page.setViewport({ width: 430, height: 932, deviceScaleFactor: 2 });
-
-  // The whole point: this browser is NOT in Istanbul's timezone.
-  await page.emulateTimezone('America/New_York');
-
-  console.log('\nQuarc Weather — cross-timezone hour correctness\n================================================\n');
-  console.log('  Browser emulated timezone: America/New_York (viewing Istanbul, UTC+3)\n');
-
-  await step('login and reach the real system clock reading', async () => {
-    await page.goto(BASE, { waitUntil: 'networkidle2', timeout: 30000 });
-    await page.waitForSelector('input[placeholder="Username"]', { timeout: 15000 });
-    await page.type('input[placeholder="Username"]', USER);
-    await page.type('input[placeholder="Password"]', PASS);
-    await Promise.all([
-      page.click('button[type="submit"]'),
-      page.waitForFunction(() => !document.body.innerText.includes('Sign in to your Quarc account'), { timeout: 20000 }),
-    ]);
-    // Independently compute what "now" should read as in both zones, using
-    // the browser's own (emulated) clock — this is the ground truth the
-    // app's output gets checked against below.
-    const truth = await page.evaluate(() => {
-      const parts = (tz) => {
-        const p = new Intl.DateTimeFormat('en-CA', {
-          timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-        }).formatToParts(new Date());
-        return `${p.find((x) => x.type === 'hour').value}:${p.find((x) => x.type === 'minute').value}`;
-      };
-      return { nyTime: parts('America/New_York'), istanbulTime: parts('Europe/Istanbul') };
-    });
-    global.truth = truth;
-    return `browser clock reads ${truth.nyTime} in NY, ${truth.istanbulTime} in Istanbul right now`;
+  await t.step('the browser really is in New York (so the test can tell the two zones apart)', async () => {
+    const tz = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    t.assert(tz === 'America/New_York', `browser tz is ${tz}`);
+    return tz;
   });
 
-  await step('reset state and add Istanbul', async () => {
-    // Reset both cities AND language/units — this suite must produce
-    // correct results regardless of what a previous suite run left behind
-    // (e.g. ui.test.js's own Settings check switches the account to
-    // Turkish/imperial and doesn't switch back), since the text assertions
-    // below match specific English strings ("Now", "HOURLY", "SUNRISE").
-    await page.evaluate(async () => {
-      const cities = await fetch('/api/cities', { credentials: 'include' }).then((r) => r.json());
-      await Promise.all(cities.map((c) => fetch(`/api/cities/${c.id}`, { method: 'DELETE', credentials: 'include' })));
-      await fetch('/api/prefs', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ units: 'metric', wind_unit: 'kmh', precip_unit: 'mm', theme: 'auto', language: 'en' }),
-      });
-      localStorage.removeItem('quarc_weather_prefs');
-      localStorage.setItem('language', 'en');
-    });
-    await page.goto(`${BASE}/add`, { waitUntil: 'networkidle2' });
-    await page.waitForSelector('input', { timeout: 10000 });
-    await page.type('input', 'Istanbul');
-    await page.waitForFunction(() => document.querySelectorAll('li button').length > 0, { timeout: 20000 });
-    await page.click('li button');
-    await page.waitForFunction(() => window.location.pathname === '/', { timeout: 15000 });
-    await page.waitForFunction(() => !!document.querySelector('ul > li'), { timeout: 15000 });
-    await page.click('ul > li button');
-    await page.waitForFunction(() => window.location.pathname.startsWith('/city/'), { timeout: 15000 });
-    await sleep(2000);
-    return 'opened Istanbul';
+  await t.step('the city card shows the current time IN ISTANBUL, not New York', async () => {
+    await H.goList(d);
+    await H.addCityByName(d, 'Istanbul', 'Istanbul');
+    await H.waitCards(d, { has: ['Istanbul'] });
+    await H.sleep(800);
+    const shown = await page.$eval('ul > li', (li) => li.querySelector('p.text-xs')?.textContent.trim());
+    const [h, m] = shown.split(':').map(Number);
+    const want = istanbulNow();
+    const diff = Math.abs(h * 60 + m - (want.hour * 60 + want.minute));
+    t.assert(Math.min(diff, 1440 - diff) <= 2, `card says ${shown}, Istanbul is ${pad(want.hour)}:${pad(want.minute)}`);
+    await page.screenshot({ path: path.join(SHOTS, '1-card.png') });
+    return `${shown} (Istanbul ${pad(want.hour)}:${pad(want.minute)})`;
   });
 
-  await step('the hourly strip\'s "Now" cell is labeled with the correct Istanbul hour', async () => {
-    // The cell showing "Now" is a placeholder for the current Istanbul
-    // hour — the cell immediately after it should be exactly +1 hour in
-    // Istanbul's own wall-clock, which only holds if the whole slice was
-    // anchored to the *right* hour in the first place.
-    const cellTemps = await page.evaluate(() => {
-      const strip = [...document.querySelectorAll('section')].find((s) => /HOURLY/i.test(s.textContent));
-      return strip ? strip.innerText : '';
+  await t.step('the hourly strip\'s "Now" cell is the current Istanbul hour, and the next cell is one hour later', async () => {
+    await H.cardButton(d, 'Istanbul');
+    await page.waitForFunction(() => /Hourly forecast/i.test(document.body.textContent), { timeout: 25000 });
+    const cells = await page.evaluate(() => {
+      const section = Array.from(document.querySelectorAll('section')).find((s) => /hourly forecast/i.test(s.textContent));
+      return Array.from(section.querySelectorAll('.rounded-xl')).slice(0, 3).map((c) => c.querySelector('span')?.textContent.trim());
     });
-    const expectedIstanbulHour = parseInt(global.truth.istanbulTime.split(':')[0], 10);
-    const nextHour = String((expectedIstanbulHour + 1) % 24).padStart(2, '0');
-    assert(cellTemps.includes('Now'), `no "Now" cell found: ${cellTemps.slice(0, 100)}`);
-    assert(
-      cellTemps.includes(`${nextHour}:`) || new RegExp(`\\b${nextHour}\\b`).test(cellTemps),
-      `expected the hour after Now to be ${nextHour} (Istanbul time), strip shows: ${cellTemps.slice(0, 200)}`
-    );
-    return `"Now" is followed by ${nextHour}:xx — matches Istanbul's real current+1 hour, not New York's`;
+    t.assert(cells[0] === 'Now', `first cell is "${cells[0]}"`);
+    const want = istanbulNow();
+    t.assert(Number(cells[1]) === (want.hour + 1) % 24, `second cell says ${cells[1]}, expected ${pad((want.hour + 1) % 24)}`);
+    t.assert(Number(cells[2]) === (want.hour + 2) % 24, `third cell says ${cells[2]}, expected ${pad((want.hour + 2) % 24)}`);
+    await page.screenshot({ path: path.join(SHOTS, '2-hourly.png') });
+    return `Now, ${cells[1]}, ${cells[2]}  (Istanbul hour is ${pad(want.hour)})`;
   });
 
-  await step('scroll to detail tiles and capture sunrise for visual confirmation', async () => {
-    await page.evaluate(() => {
-      const el = [...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 50);
-      if (el) el.scrollTop = el.scrollHeight;
+  await t.step('the sunrise shown is Open-Meteo\'s Istanbul sunrise verbatim — not shifted by the viewer\'s zone', async () => {
+    const city = await H.serverState(d.userId).then((s) => s.all.find((c) => c.name === 'Istanbul'));
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&daily=sunrise&timezone=auto&forecast_days=2&past_days=1`);
+    const j = await r.json();
+    const wanted = j.daily.sunrise[1].slice(11, 16); // today's sunrise, "HH:mm", in the city's own zone
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const shown = await page.evaluate(() => {
+      const h = Array.from(document.querySelectorAll('h3')).find((x) => /sunrise/i.test(x.textContent));
+      return h ? h.parentElement.querySelector('p.text-3xl')?.textContent.trim() : null;
     });
-    await sleep(1000);
-    await page.screenshot({ path: `${SHOTS}/1-detail-with-sunrise.png` });
-    const txt = await page.evaluate(() => document.body.innerText);
-    const sunriseMatch = txt.match(/SUNRISE[\s\S]{0,40}?(\d{2}:\d{2})/);
-    assert(sunriseMatch, `couldn't find a sunrise time in: ${txt.slice(0, 300)}`);
-    const [hh] = sunriseMatch[1].split(':').map(Number);
-    // Istanbul sunrise in August is roughly 06:00-06:30 local — nowhere
-    // near what a New-York-shifted misinterpretation would produce
-    // (which would land 7-8 hours off, i.e. very late night/pre-dawn).
-    assert(hh >= 4 && hh <= 8, `sunrise hour ${hh} is not a plausible Istanbul morning — looks shifted`);
-    return `sunrise shown as ${sunriseMatch[1]} — a real Istanbul-morning time, not shifted by the NY gap`;
+    await page.screenshot({ path: path.join(SHOTS, '3-sunrise.png') });
+    t.assert(shown === wanted, `app shows ${shown}, Open-Meteo says ${wanted}`);
+    return `${shown}`;
   });
 
-  await context.close();
   await browser.close();
-
-  console.log('\n================================================');
-  console.log(`  ${pass} passed, ${fail} failed`);
-  console.log(`  screenshots: ${SHOTS}\n`);
-  process.exit(fail === 0 ? 0 : 1);
+  t.finish(`screenshots: ${SHOTS}`);
 })().catch((e) => {
   console.error('HARNESS ERROR:', e);
   process.exit(1);

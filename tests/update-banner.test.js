@@ -5,11 +5,12 @@
 
 const puppeteer = require('puppeteer');
 const path = require('path');
+const H = require('./helpers/app');
 
-const BASE = 'http://127.0.0.1:4173';
+const BASE = H.BASE;
 const SHOTS = path.join(__dirname, 'shots-update');
-const USER = 'zeki';
-const PASS = 'testpass123';
+const USER = H.USER;
+const PASS = H.PASS;
 
 let pass = 0;
 let fail = 0;
@@ -26,6 +27,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   fs.mkdirSync(SHOTS, { recursive: true });
 
   const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  // The assertions read English text, and the language follows the account to every device that signs in — so make
+  // sure the account is in English (an earlier suite may have left it in Turkish) before this device signs in.
+  await H.cleanAccount(browser);
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   await page.setViewport({ width: 430, height: 932, deviceScaleFactor: 2 });

@@ -1,260 +1,155 @@
-// Drives the real built frontend in a headless browser against the real
-// quarc-auth service and the real weather backend. Captures every console
-// error and page exception — that's what catches runtime React bugs a
-// successful `vite build` cannot.
+// Drives the real built app in headless Chrome against the real stack: login, add a city, a real forecast, settings,
+// Turkish, logout. Captures every console error and page exception — that is what catches runtime React bugs a
+// successful `vite build` cannot. Also proves the weather never goes through the Quarc server.
 
-const puppeteer = require('puppeteer');
 const path = require('path');
+const fs = require('fs');
+const H = require('./helpers/app');
 
-const BASE = 'http://127.0.0.1:4173';
 const SHOTS = path.join(__dirname, 'shots');
-const USER = 'zeki';
-const PASS = 'testpass123';
-
-const consoleErrors = [];
-const pageErrors = [];
-let pass = 0;
-let fail = 0;
-
-function ok(n, extra = '') { console.log(`  [ OK ]  ${n}${extra ? '  — ' + extra : ''}`); pass++; }
-function bad(n, d) { console.log(`  [FAIL]  ${n}  — ${d}`); fail++; }
-
-async function step(name, fn) {
-  try { ok(name, await fn()); } catch (e) { bad(name, e.message.split('\n')[0]); }
-}
-function assert(c, m) { if (!c) throw new Error(m); }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const fs = require('fs');
   fs.mkdirSync(SHOTS, { recursive: true });
+  const t = H.createRunner('Quarc Weather — UI test');
+  const browser = await H.launch();
+  const d = await H.newDevice(browser, { name: 'ui' });
+  const { page } = d;
 
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 430, height: 932, deviceScaleFactor: 2 });
-
-  page.on('console', (m) => {
-    if (m.type() === 'error') consoleErrors.push(m.text());
-  });
-  page.on('pageerror', (e) => pageErrors.push(e.message));
-
-  console.log('\nQuarc Weather — UI test\n=======================\n');
-
-  console.log('Login');
-  await step('login screen renders', async () => {
-    await page.goto(BASE, { waitUntil: 'networkidle2', timeout: 30000 });
+  t.section('Login');
+  await t.step('login screen renders', async () => {
+    await page.goto(H.BASE, { waitUntil: 'networkidle2', timeout: 30000 });
     await page.waitForSelector('input[placeholder="Username"]', { timeout: 15000 });
     const heading = await page.$eval('h1', (el) => el.textContent);
     await page.screenshot({ path: path.join(SHOTS, '1-login.png') });
     return heading;
   });
-
-  await step('shared-account note is shown', async () => {
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/Quarc Music/.test(txt), 'shared-account line missing');
+  await t.step('shared-account note is shown', async () => {
+    t.assert(/Quarc Music/.test(await H.text(d)), 'shared-account line missing');
     return 'present';
   });
-
-  await step('logging in reaches the city list', async () => {
-    await page.type('input[placeholder="Username"]', USER);
-    await page.type('input[placeholder="Password"]', PASS);
-    await Promise.all([
-      page.click('button[type="submit"]'),
-      page.waitForFunction(() => document.body.innerText.includes('Weather'), { timeout: 20000 }),
-    ]);
-    await sleep(1200);
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(!/Sign in to your Quarc account/.test(txt), 'still on login screen');
+  await t.step('logging in reaches the (empty) city list', async () => {
+    await H.login(d);
+    d.userId = await H.currentUserId(d);
+    await H.resetAccount(d.userId);
+    await H.goList(d);
+    const txt = await H.text(d);
+    t.assert(!/Sign in to your Quarc account/.test(txt), 'still on login screen');
+    t.assert(/No cities yet/.test(txt), 'empty state missing');
     await page.screenshot({ path: path.join(SHOTS, '2-empty-list.png') });
     return 'authenticated';
   });
 
-  // Reset server-side state so the run is repeatable regardless of what a
-  // previous run left behind.
-  await page.evaluate(async () => {
-    const cities = await fetch('/api/cities', { credentials: 'include' }).then((r) => r.json());
-    await Promise.all(
-      cities.map((c) => fetch(`/api/cities/${c.id}`, { method: 'DELETE', credentials: 'include' }))
-    );
-    await fetch('/api/prefs', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ units: 'metric', wind_unit: 'kmh', precip_unit: 'mm', theme: 'auto', language: 'en' }),
+  t.section('Add a city');
+  await t.step('searching and picking a city puts it on the list with a real temperature and condition', async () => {
+    await H.addCityByName(d, 'Istanbul', 'Istanbul');
+    await H.waitCards(d, { has: ['Istanbul'] });
+    await page.waitForFunction(() => /\d/.test(document.querySelector('ul > li .text-5xl')?.textContent || ''), { timeout: 20000 });
+    const card = await page.$eval('ul > li', (li) => ({ temp: li.querySelector('.text-5xl')?.textContent, text: li.innerText }));
+    t.assert(/-?\d+/.test(card.temp), `no temperature: ${card.temp}`);
+    t.assert(/H:\s*-?\d+°\s+L:\s*-?\d+°/.test(card.text), `no high/low: ${card.text}`);
+    await page.screenshot({ path: path.join(SHOTS, '3-list.png') });
+    return `${card.temp}°`;
+  });
+  await t.step('the city reaches the server (sync), and only manual cities do', async () => {
+    const s = await H.waitServer(d.userId, (x) => x.cities.includes('Istanbul'), 'Istanbul');
+    t.assert(s.cities.join() === 'Istanbul', s.cities.join());
+    return 'synced';
+  });
+
+  t.section('Forecast screen');
+  let celsius;
+  await t.step('opening the city renders the full forecast', async () => {
+    await H.cardButton(d, 'Istanbul');
+    await page.waitForFunction(() => location.pathname.startsWith('/city/'), { timeout: 10000 });
+    await page.waitForFunction(() => /Hourly forecast/i.test(document.body.textContent) && /10-day forecast/i.test(document.body.textContent), { timeout: 25000 });
+    const info = await page.evaluate(() => ({
+      name: document.querySelector('h1')?.textContent.trim(),
+      temp: document.querySelector('.text-\\[86px\\]')?.textContent.trim(),
+    }));
+    t.assert(/Istanbul/.test(info.name), `city name: ${info.name}`);
+    celsius = Number(info.temp);
+    t.assert(Number.isFinite(celsius), `temperature: ${info.temp}`);
+    await page.screenshot({ path: path.join(SHOTS, '4-city.png') });
+    return `${info.name}, ${celsius}°`;
+  });
+  await t.step('the hourly strip has 24 hours and the 10-day list has 10 rows', async () => {
+    const counts = await page.evaluate(() => {
+      const section = (re) => Array.from(document.querySelectorAll('section')).find((s) => re.test(s.textContent));
+      return {
+        hours: section(/hourly forecast/i).querySelectorAll('.rounded-xl').length,
+        days: section(/10-day forecast/i).querySelectorAll('li').length,
+      };
     });
-    localStorage.removeItem('quarc_weather_prefs');
-    localStorage.setItem('language', 'en');
+    t.assert(counts.hours === 24, `${counts.hours} hourly cells`);
+    t.assert(counts.days === 10, `${counts.days} daily rows`);
+    return '24 + 10';
   });
-  await page.goto(BASE, { waitUntil: 'networkidle2' });
-  await sleep(1500);
-
-  console.log('\nAdding a city');
-  await step('empty state invites adding a city', async () => {
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/No cities yet/.test(txt), `unexpected: ${txt.slice(0, 80)}`);
-    return 'empty state shown';
-  });
-
-  await step('search finds Istanbul', async () => {
-    await page.goto(`${BASE}/add`, { waitUntil: 'networkidle2' });
-    await page.waitForSelector('input', { timeout: 10000 });
-    await page.type('input', 'Istanbul');
-    await page.waitForFunction(() => document.querySelectorAll('li button').length > 0, { timeout: 20000 });
-    const n = await page.evaluate(() => document.querySelectorAll('li button').length);
-    await page.screenshot({ path: path.join(SHOTS, '3-search.png') });
-    return `${n} results`;
-  });
-
-  await step('tapping a result saves it and returns to the list', async () => {
-    await page.click('li button');
-    await page.waitForFunction(() => document.body.innerText.includes('°'), { timeout: 25000 });
-    await sleep(2000);
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/Istanbul/.test(txt), 'Istanbul not in list');
-    await page.screenshot({ path: path.join(SHOTS, '4-city-list.png') });
-    return txt.split('\n').filter(Boolean).slice(0, 4).join(' / ');
-  });
-
-  await step('the card shows a real temperature and condition', async () => {
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/\d+°/.test(txt), 'no temperature rendered');
-    assert(/H:\s*-?\d+°/.test(txt), 'no high/low rendered');
-    return txt.match(/\d+°/)[0];
-  });
-
-  console.log('\nCity detail');
-  await step('opening the city renders the full forecast', async () => {
-    await page.click('li button');
-    await page.waitForFunction(
-      () => document.body.innerText.includes('HOURLY FORECAST') || document.body.innerText.includes('Hourly forecast'),
-      { timeout: 25000 }
-    );
-    await sleep(2500);
-    await page.screenshot({ path: path.join(SHOTS, '5-detail-top.png') });
-    const txt = await page.evaluate(() => document.body.innerText);
-    return txt.split('\n').filter(Boolean).slice(0, 3).join(' / ');
-  });
-
-  await step('hourly strip has 24 cells', async () => {
-    const n = await page.evaluate(() => {
-      const h = [...document.querySelectorAll('section')].find((s) => /hourly/i.test(s.textContent));
-      return h ? h.querySelectorAll('div > div').length : 0;
-    });
-    assert(n >= 20, `only ${n} hourly cells`);
-    return `${n} cells`;
-  });
-
-  await step('10-day list renders 10 rows', async () => {
-    const n = await page.evaluate(() => {
-      const d = [...document.querySelectorAll('section')].find((s) => /10-day|10 günlük/i.test(s.textContent));
-      return d ? d.querySelectorAll('li').length : 0;
-    });
-    assert(n === 10, `got ${n} rows`);
-    return `${n} rows`;
-  });
-
-  await step('detail tiles render with real values', async () => {
-    const txt = await page.evaluate(() => document.body.innerText);
-    for (const label of ['UV INDEX', 'WIND', 'SUNRISE', 'FEELS LIKE', 'VISIBILITY', 'PRESSURE', 'MOON PHASE']) {
-      assert(txt.toUpperCase().includes(label), `missing tile: ${label}`);
+  await t.step('the detail tiles are present (UV, wind, sunrise, feels like, humidity, visibility, pressure, moon)', async () => {
+    const body = (await page.evaluate(() => document.body.textContent)).toLowerCase();
+    for (const label of ['uv index', 'wind', 'sunrise', 'feels like', 'precipitation', 'visibility', 'pressure', 'moon phase']) {
+      t.assert(body.includes(label), `missing tile: ${label}`);
     }
-    // The weather screen scrolls an inner div, not the document — scrolling
-    // window here silently does nothing.
-    const scrolled = await page.evaluate(() => {
-      const el = [...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 50);
-      if (!el) return false;
-      el.scrollTop = el.scrollHeight;
-      return true;
-    });
-    assert(scrolled, 'could not find the scroll container');
-    await sleep(1000);
-    await page.screenshot({ path: path.join(SHOTS, '6-detail-bottom.png') });
-    return 'all tiles present, scrolled';
+    return '8 tiles';
+  });
+  await t.step('the forecast came from the weather provider, never through the Quarc server', async () => {
+    t.assert(d.hits.provider >= 1, 'no provider request');
+    t.assert(d.hits.quarcWeather === 0, `Quarc server asked for weather ${d.hits.quarcWeather}×`);
+    return `provider ×${d.hits.provider}, server weather ×0`;
   });
 
-  await step('air quality tile is present', async () => {
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/AIR QUALITY/i.test(txt), 'no AQI tile');
-    assert(/PM2\.5/.test(txt), 'no PM2.5 readout');
-    return 'AQI + PM2.5 shown';
+  t.section('Settings');
+  await t.step('switching to °F refetches the forecast in Fahrenheit', async () => {
+    await page.evaluate(() => Array.from(document.querySelectorAll('header button')).find((b) => b.getAttribute('aria-label') === 'Settings').click());
+    await page.waitForFunction(() => location.pathname === '/settings', { timeout: 10000 });
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === '°F').click());
+    await H.sleep(500);
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.includes('Weather') && b.textContent.includes('‹')).click());
+    await page.waitForFunction(() => location.pathname === '/', { timeout: 10000 });
+    await H.cardButton(d, 'Istanbul');
+    await page.waitForFunction((c) => {
+      const n = Number(document.querySelector('.text-\\[86px\\]')?.textContent);
+      return Number.isFinite(n) && Math.abs(n - (c * 9 / 5 + 32)) <= 2;
+    }, { timeout: 25000 }, celsius);
+    await page.screenshot({ path: path.join(SHOTS, '5-fahrenheit.png') });
+    return `${celsius}°C → °F`;
+  });
+  await t.step('the unit choice is synced to the account', async () => {
+    const s = await H.waitServer(d.userId, (x) => x.prefs && x.prefs.fields.units.value === 'imperial', 'units=imperial');
+    return s.prefs.fields.units.value;
+  });
+  await t.step('Turkish: the interface language switches and persists', async () => {
+    await page.evaluate(() => Array.from(document.querySelectorAll('header button')).find((b) => b.getAttribute('aria-label')).click()).catch(() => {});
+    await H.goList(d);
+    await page.click('button[aria-label="Settings"]');
+    await page.waitForFunction(() => location.pathname === '/settings', { timeout: 10000 });
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === 'Türkçe').click());
+    await page.waitForFunction(() => /Ayarlar/.test(document.body.textContent), { timeout: 10000 });
+    await page.reload({ waitUntil: 'networkidle2' });
+    await page.waitForFunction(() => /Ayarlar/.test(document.body.textContent), { timeout: 10000 });
+    await page.screenshot({ path: path.join(SHOTS, '6-turkish.png') });
+    // back to English for the rest
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === 'English').click());
+    await page.waitForFunction(() => /Settings/.test(document.body.textContent), { timeout: 10000 });
+    return 'Ayarlar';
   });
 
-  console.log('\nSettings');
-  await step('settings screen renders', async () => {
-    await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle2' });
-    await sleep(1200);
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/Settings/i.test(txt), 'no settings heading');
-    assert(txt.includes('zeki'), 'signed-in user not shown');
-    await page.screenshot({ path: path.join(SHOTS, '7-settings.png') });
-    return 'rendered';
+  t.section('Logout');
+  await t.step('logging out returns to the login screen, and signing back in restores the list from this device', async () => {
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => /log out/i.test(b.textContent)).click());
+    await page.waitForSelector('input[placeholder="Username"]', { timeout: 15000 });
+    await H.login(d);
+    await H.goList(d);
+    await H.waitCards(d, { has: ['Istanbul'] });
+    return 'Istanbul still there';
   });
 
-  await step('switching to °F persists to the server', async () => {
-    await page.evaluate(() => {
-      const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '°F');
-      b.click();
-    });
-    await sleep(1500);
-    const r = await page.evaluate(async () =>
-      (await fetch('/api/prefs', { credentials: 'include' }).then((x) => x.json())).units
-    );
-    assert(r === 'imperial', `server says ${r}`);
-    return 'server units = imperial';
-  });
-
-  await step('switching to Turkish translates the UI', async () => {
-    await page.evaluate(() => {
-      const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Türkçe');
-      b.click();
-    });
-    await sleep(1500);
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/Ayarlar|Birimler|Görünüm/.test(txt), 'UI did not translate');
-    await page.screenshot({ path: path.join(SHOTS, '8-settings-tr.png') });
-    return 'Turkish applied';
-  });
-
-  await step('Turkish city list still renders forecasts', async () => {
-    await page.evaluate(async () => {
-      await fetch('/api/prefs', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ units: 'metric' }),
-      });
-    });
-    await page.goto(BASE, { waitUntil: 'networkidle2' });
-    await sleep(2500);
-    const txt = await page.evaluate(() => document.body.innerText);
-    assert(/Hava Durumu/.test(txt), 'header not translated');
-    assert(/\d+°/.test(txt), 'no temperature');
-    await page.screenshot({ path: path.join(SHOTS, '9-list-tr.png') });
-    return txt.split('\n').filter(Boolean).slice(0, 3).join(' / ');
-  });
-
-  console.log('\nRuntime errors');
-  await step('no uncaught page exceptions', async () => {
-    assert(pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));
-    return 'none';
-  });
-
-  await step('no console errors', async () => {
-    const real = consoleErrors.filter((e) => !/favicon|manifest|sw\.js|Failed to load resource/i.test(e));
-    assert(real.length === 0, real.join(' | ').slice(0, 300));
+  t.section('Runtime errors');
+  await t.step('no console errors or page exceptions', async () => {
+    const all = [...d.pageErrors, ...d.errors];
+    t.assert(all.length === 0, all.slice(0, 3).join(' | '));
     return 'none';
   });
 
   await browser.close();
-
-  console.log('\n=======================');
-  console.log(`  ${pass} passed, ${fail} failed`);
-  console.log(`  screenshots: ${SHOTS}\n`);
-  process.exit(fail === 0 ? 0 : 1);
-})().catch((e) => {
-  console.error('HARNESS ERROR:', e);
-  process.exit(1);
-});
+  t.finish(`screenshots: ${SHOTS}`);
+})();
