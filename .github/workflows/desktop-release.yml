@@ -110,15 +110,19 @@ jobs:
       # drops the window's server URL), so it opens and works without the Quarc server — weather and city search
       # come straight from the providers; the server is only needed to sign in and to sync. macOS and Linux keep
       # being a window onto the server's web app, so they skip this and ship the placeholder in desktop/dist.
+      # Run INSIDE frontend/ rather than with `npm --prefix frontend`: on the Windows runner (Node 20, npm 10.8)
+      # `--prefix` is ignored by `npm install`, which then looks for package.json in the repo root, installs nothing
+      # and the build fails with "vite is not recognized". (The Linux jobs can use --prefix; Windows can't.)
       - name: Build the bundled frontend (Windows)
         if: matrix.platform == 'windows-latest'
+        working-directory: frontend
         shell: bash
         env:
           VITE_API_URL: https://quarcnet0.tail84500c.ts.net:4002
         run: |
-          npm install --prefix frontend
-          npm run build --prefix frontend
-          cp -r frontend/dist/* desktop/dist/
+          npm install
+          npm run build
+          cp -r dist/* ../desktop/dist/
 
       - name: Set desktop version from tag
         if: startsWith(github.ref, 'refs/tags/v')
