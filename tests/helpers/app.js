@@ -59,6 +59,31 @@ async function cachedGeocode(url) {
   throw last;
 }
 
+/** Answers one intercepted request to the geocoder from the shared cache (or lets it through if there is no answer). */
+function replayGeocode(req) {
+  (async () => {
+    try {
+      await req.respond({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: await cachedGeocode(req.url()),
+      });
+    } catch (e) {
+      await req.continue().catch(() => {}); // no answer to replay: let the browser ask for itself
+    }
+  })();
+}
+
+/** For suites that build their own pages: replay the geocoder on `page`, and let everything else through untouched. */
+async function replayGeocoderOn(page) {
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    if (new URL(req.url()).hostname === GEOCODER_HOST) return replayGeocode(req);
+    return req.continue();
+  });
+}
+
 // --- a tiny test runner with the suites' usual output ------------------------------------------------------------
 function createRunner(title) {
   let pass = 0;
@@ -136,21 +161,7 @@ async function newDevice(browser, { name = 'device', geo = null, viewport, timez
     if (device.providerBlocked && /open-meteo\.com$/.test(u.hostname)) return req.abort('connectionrefused');
 
     // City search: a real Open-Meteo answer, fetched once per distinct query per run (see cachedGeocode).
-    if (u.hostname === GEOCODER_HOST && !device.liveGeocoder) {
-      (async () => {
-        try {
-          await req.respond({
-            status: 200,
-            contentType: 'application/json',
-            headers: { 'access-control-allow-origin': '*' },
-            body: await cachedGeocode(req.url()),
-          });
-        } catch (e) {
-          await req.continue().catch(() => {}); // no answer to replay: let the browser ask for itself
-        }
-      })();
-      return undefined;
-    }
+    if (u.hostname === GEOCODER_HOST && !device.liveGeocoder) return replayGeocode(req);
 
     // Alter the real forecast on its way in.
     if (device.forecast.mutate && u.hostname === 'api.open-meteo.com' && u.pathname === '/v1/forecast') {
@@ -374,4 +385,5 @@ module.exports = {
   BASE, BACKEND, USER, PASS, sleep, createRunner, launch, newDevice, login, currentUserId, serverState, resetAccount,
   waitServer, text, reconnect, noBadge, badge, cardNames, waitCards, goList, addCityByName, cardButton, freshSession,
   openCityByName, tokenFor, clearForecastCache, ageForecastCache, cleanAccount,
+  GEOCODER_HOST, replayGeocode, replayGeocoderOn,
 };

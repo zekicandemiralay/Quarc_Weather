@@ -58,6 +58,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // ---------------------------------------------------------------- plain web
   const webCtx = await browser.createBrowserContext();
   const web = await webCtx.newPage();
+  await H.replayGeocoderOn(web); // city search: the real answer, fetched once per query per run
   await web.setViewport({ width: 430, height: 932, deviceScaleFactor: 2 });
   watch(web);
 
@@ -106,6 +107,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // ------------------------------------------------------------ fake Android
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
+  await H.replayGeocoderOn(page);
   await page.setViewport({ width: 430, height: 1400, deviceScaleFactor: 2 });
   watch(page);
   await ctx.overridePermissions(BASE, []);

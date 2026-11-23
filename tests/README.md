@@ -205,8 +205,9 @@ folders are git-ignored.
   `helpers/app.js` answers a search with the **real** Open-Meteo response, fetched from the live geocoder once per distinct
   query (with up to 5 tries and backoff), kept for a day in `quarc-weather-test-geocode-cache.json` in the temp
   directory, and replayed. Delete that file to force fresh answers, or set `device.liveGeocoder = true` in a suite to
-  ask the live service directly. `update-banner` builds its own page and still searches live (it is informational for
-  that reason). CI's geocoder probe step records what the runner actually gets from it.
+  ask the live service directly. Suites that build their own pages (`offline-sync-ui`, `widget-settings`,
+  `update-banner`) get the same replay through `replayGeocode` / `replayGeocoderOn`. CI's geocoder probe step records
+  what the runner actually gets from it.
 * **`sync-api.test.js` and the browser suites are destructive** to the test user's cities. Point `DB_PATH` at a
   scratch database, never at production data.
 * **`vite preview` is not production's nginx for cross-origin requests.** It answers CORS pre-flights itself

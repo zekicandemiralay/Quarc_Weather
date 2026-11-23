@@ -32,6 +32,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await H.cleanAccount(browser);
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
+  await H.replayGeocoderOn(page); // the banner step adds a city; the search answer is the real one, replayed
   await page.setViewport({ width: 430, height: 932, deviceScaleFactor: 2 });
   // No location permission needed for this test — deny it so the landing
   // resolver falls straight through without waiting on a GPS fix.

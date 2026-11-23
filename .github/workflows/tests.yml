@@ -218,7 +218,8 @@ jobs:
             out="$out [$r]"
             sleep 2
           done
-          quota=$(grep -i "x-ratelimit-remaining\|retry-after" "$RUNNER_TEMP/geo.headers" 2>/dev/null | tr -d '\r' | tr '\n' ' ')
+          # (|| true: the shell stops at a failing command, and grep finding no such header is not a failure)
+          quota=$(grep -i "x-ratelimit-remaining\|retry-after" "$RUNNER_TEMP/geo.headers" 2>/dev/null | tr -d '\r' | tr '\n' ' ' || true)
           echo "::notice title=Open-Meteo geocoder from this runner::$out $quota"
 
       # Suites that only need our own stack.

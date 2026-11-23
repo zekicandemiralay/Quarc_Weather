@@ -13,6 +13,7 @@
 const puppeteer = require('puppeteer');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const H = require('./helpers/app');
 
 const BASE = 'http://127.0.0.1:4173';
 const BACKEND = 'http://127.0.0.1:3904';
@@ -81,6 +82,8 @@ async function newDevice(browser, name, geo) {
     if (u.origin === BASE && /\/api\/(weather|geocode)/.test(u.pathname)) device.hits.quarcWeather++;
     // "Tailscale off": the Quarc server cannot be reached at all. (Weather and search go to other hosts.)
     if (device.blocked && u.origin === BASE && u.pathname.startsWith('/api/')) return req.abort('connectionrefused');
+    // City search: the real geocoder answer, fetched once per query per run (see helpers/app.js).
+    if (u.hostname === H.GEOCODER_HOST) return H.replayGeocode(req);
     return req.continue();
   });
   page.on('pageerror', (e) => device.pageErrors.push(e.message));
