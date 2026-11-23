@@ -6,8 +6,8 @@ import android.content.Intent;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
-import android.webkit.CookieManager;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -15,73 +15,60 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 /**
- * Bridges the app's web session into native code, so the home-screen widget
- * (which runs in its own process, with no access to the WebView or its
- * cookies) can refresh itself in the background without the app being open.
+ * Bridges the app into native code, so the home-screen widget and the morning briefing (which run in their
+ * own process, with no access to the WebView or its database) can refresh themselves in the background
+ * without the app being open.
  *
- * The session cookie is httpOnly — JS can never read it via document.cookie,
- * that's the whole point of httpOnly. Android's CookieManager operates below
- * the JS sandbox at the WebView engine level though, so it can read what the
- * server actually set. This plugin is the only bridge between those two
- * worlds.
+ * What crosses the bridge is just the list of places to show — the saved cities plus this device's My
+ * Location, as names and coordinates — and the unit setting. The background workers then ask the weather
+ * provider directly; there is no login token and no Quarc server on that path.
  */
 @CapacitorPlugin(name = "WidgetBridge")
 public class WidgetBridgePlugin extends Plugin {
 
     static final String PREFS = "quarc_weather_widget";
-    static final String KEY_TOKEN = "session_token";
-    static final String KEY_SERVER = "server_origin";
+    /** The places to show, as the JSON {@link WidgetCities} reads. */
+    static final String KEY_CITIES = "cities_json";
+    /** "metric" or "imperial" — decides whether the workers ask the provider for °C or °F. */
+    static final String KEY_UNITS = "units";
     private static final String KEY_PIN_OFFERED = "pin_offered";
 
     /**
-     * Called from JS right after login / a successful session check. Reads
-     * the "token" cookie set by quarc-auth for the given server origin and
-     * stores it for WeatherWidgetWorker's own, independent HTTP calls.
+     * Called from JS whenever the list of places or the unit setting changes. Stores them for the workers
+     * and refreshes the widget — but only if something actually changed, so reopening the app does not hit
+     * the weather provider every time.
      */
     @PluginMethod
-    public void syncSession(PluginCall call) {
-        String serverOrigin = call.getString("serverOrigin");
-        if (serverOrigin == null || serverOrigin.isEmpty()) {
-            call.reject("serverOrigin required");
+    public void syncCities(PluginCall call) {
+        JSArray raw = call.getArray("cities");
+        if (raw == null) {
+            call.reject("cities required");
             return;
         }
+        // Stored cleaned: anything that is not a usable place (bad coordinates, no id) is dropped here.
+        String cities = WidgetCities.toJson(WidgetCities.parse(raw.toString()));
+        String units = "imperial".equals(call.getString("units")) ? "imperial" : "metric";
 
-        String token = null;
-        String raw = CookieManager.getInstance().getCookie(serverOrigin);
-        if (raw != null) {
-            for (String part : raw.split(";")) {
-                String trimmed = part.trim();
-                if (trimmed.startsWith("token=")) {
-                    token = trimmed.substring("token=".length());
-                    break;
-                }
-            }
-        }
-
-        SharedPreferences.Editor editor = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
-        if (token != null && !token.isEmpty()) {
-            editor.putString(KEY_TOKEN, token);
-            editor.putString(KEY_SERVER, serverOrigin);
-            editor.apply();
-            // Refresh right away so a freshly-logged-in widget doesn't sit on
-            // stale/empty data until the next scheduled cycle.
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        boolean changed = !cities.equals(prefs.getString(KEY_CITIES, null)) || !units.equals(prefs.getString(KEY_UNITS, null));
+        if (changed) {
+            prefs.edit().putString(KEY_CITIES, cities).putString(KEY_UNITS, units).apply();
+            // Refresh right away so the widget does not sit on stale or empty data until the next cycle.
             WeatherWidgetWorker.refreshNow(getContext());
         }
-        // Not finding a cookie yet isn't an error worth surfacing to JS —
-        // this gets called defensively on every checkSession(), and most of
-        // those calls simply have nothing new to harvest.
         call.resolve();
     }
 
-    /** Called on logout so a stale token can't keep refreshing the widget
-     *  after the user has explicitly signed out. */
+    /** Called on logout: the widget stops showing (and refreshing) the previous person's places. */
     @PluginMethod
-    public void clearSession(PluginCall call) {
+    public void clearCities(PluginCall call) {
         getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .remove(KEY_TOKEN)
-            .remove(KEY_SERVER)
+            .remove(KEY_CITIES)
+            .remove(KEY_UNITS)
             .apply();
+        // Repaint now ("open the app to sign in") rather than at the next scheduled refresh.
+        WeatherWidgetWorker.refreshNow(getContext());
         call.resolve();
     }
 

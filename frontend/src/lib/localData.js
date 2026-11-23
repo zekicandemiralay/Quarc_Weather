@@ -1,5 +1,8 @@
 import { create } from 'zustand';
+import { liveQuery } from 'dexie';
 import { apiUrl } from './apiUrl';
+import { hasWidgetBridge, syncWidgetCities, clearWidgetCities } from './widgetBridge';
+import { watchWidgetPlaces } from './widgetPlaces.js';
 import { openDb, getMeta } from './localDb.js';
 import { createCityStore } from './cities.js';
 import { createSyncedPrefs } from './syncedPrefs.js';
@@ -57,14 +60,43 @@ getMeta(db, 'last_sync').then(async (lastSync) => {
 }).catch(() => {});
 
 let stopLoop = null;
+let stopWidget = null;
 
 /** Called once the signed-in user is known (online or from the cached login). */
 export async function startSyncFor(userId) {
   await sync.adoptUser(userId);
   if (!stopLoop) stopLoop = sync.start();
+  startWidgetFeed();
 }
 
 export function stopSync() {
   stopLoop?.();
   stopLoop = null;
+  stopWidgetFeed();
+}
+
+/**
+ * Android: keeps the home-screen widget and the morning briefing supplied with the places to show (My Location
+ * first, then the saved cities) and the unit setting. They fetch the weather themselves, so this is all they need.
+ */
+function startWidgetFeed() {
+  if (stopWidget || !hasWidgetBridge()) return;
+  stopWidget = watchWidgetPlaces({
+    subscribe: (onState) => {
+      const sub = liveQuery(async () => ({
+        cities: await cityStore.listCities(),
+        hereCity: here.asCity(await here.get()),
+        units: (await prefsData.get()).units,
+      })).subscribe({ next: onState, error: () => {} });
+      return () => sub.unsubscribe();
+    },
+    push: syncWidgetCities,
+  });
+}
+
+function stopWidgetFeed() {
+  if (!stopWidget) return;
+  stopWidget();
+  stopWidget = null;
+  clearWidgetCities(); // signed out: the widget must not keep showing this person's places
 }

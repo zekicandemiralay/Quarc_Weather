@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { apiUrl } from '../lib/apiUrl';
-import { syncWidgetSession, clearWidgetSession } from '../lib/widgetBridge';
 import { syncFromStore, watchStoreSession } from '../lib/storeSso';
 import { startSyncFor, stopSync, setAuthLostHandler } from '../lib/localData';
 
@@ -23,18 +22,16 @@ const useAuthStore = create((set, get) => ({
     localStorage.setItem('quarc_user', JSON.stringify(user));
     // Adopt the account BEFORE any screen reads local data: if a different person used this device last, their
     // cities are wiped here rather than shown for a moment.
-    await startSyncFor(user.id);
+    await startSyncFor(user.id); // also starts feeding the home-screen widget (Android)
     set({ user, loading: false });
-    syncWidgetSession();
     return user;
   },
 
   async logout() {
     await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
-    stopSync();
+    stopSync(); // also clears the widget's places
     localStorage.removeItem('quarc_user');
     set({ user: null, loading: false });
-    clearWidgetSession();
   },
 
   async checkSession() {
@@ -49,12 +46,8 @@ const useAuthStore = create((set, get) => ({
       if (res.ok) {
         const user = await res.json();
         localStorage.setItem('quarc_user', JSON.stringify(user));
-        await startSyncFor(user.id);
+        await startSyncFor(user.id); // also starts feeding the home-screen widget (Android)
         set({ user, loading: false });
-        // Covers the common case too, not just a fresh login — most app
-        // opens are "already signed in", and the widget's stored token can
-        // go stale (rotated, revoked) between sessions just like any cookie.
-        syncWidgetSession();
       } else {
         stopSync();
         localStorage.removeItem('quarc_user');

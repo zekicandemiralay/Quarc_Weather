@@ -2,27 +2,26 @@
 // only — see mobile/android/.../WidgetBridgePlugin.java). Every call is a
 // no-op on web/desktop/iOS, so callers never need their own platform check.
 
-import { API_BASE } from './apiUrl';
-
 function bridge() {
   return window?.Capacitor?.isNativePlatform?.() ? window?.Capacitor?.Plugins?.WidgetBridge : null;
 }
 
+/** True where there is a native widget to feed (the Android app). */
+export const hasWidgetBridge = () => !!bridge();
+
 /**
- * Harvests the session cookie into native storage so the home-screen widget
- * can refresh itself in the background. Safe to call liberally — it's a
- * fire-and-forget no-op if there's nothing new to harvest yet.
+ * Hands the native side the places to show ({id, name, latitude, longitude, isPin}[]) and the unit setting
+ * ('metric' | 'imperial'). The widget and the morning briefing fetch the weather for them directly from the
+ * weather provider, in the background, without the app being open. The native side only refreshes the widget
+ * when the list actually changed, so calling this on every app start is fine.
  */
-export function syncWidgetSession() {
-  const plugin = bridge();
-  if (!plugin || !API_BASE) return;
-  plugin.syncSession({ serverOrigin: API_BASE }).catch(() => {});
+export function syncWidgetCities({ cities, units }) {
+  bridge()?.syncCities({ cities, units }).catch(() => {});
 }
 
-/** Clears the native session on logout, so a stale token can't keep the
- *  widget refreshing after the user has explicitly signed out. */
-export function clearWidgetSession() {
-  bridge()?.clearSession().catch(() => {});
+/** On logout: the widget stops showing (and refreshing) the previous person's places. */
+export function clearWidgetCities() {
+  bridge()?.clearCities().catch(() => {});
 }
 
 /**

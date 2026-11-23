@@ -18,21 +18,18 @@ import androidx.work.WorkerParameters;
 
 import org.json.JSONArray;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Does the actual work behind the widget: an independent HTTPS call to
- * /api/weather/overview using the session token WidgetBridgePlugin stashed
- * in SharedPreferences, stores the whole response in WidgetCache, and asks
- * WidgetRenderer to repaint every placed widget (each draws its own city,
- * in its own style). On any failure it repaints from the last cache instead.
+ * Does the actual work behind the widget: fetches the weather for every place the app last handed over
+ * (WidgetBridgePlugin keeps that list in SharedPreferences) straight from Open-Meteo, stores the result in
+ * WidgetCache, and asks WidgetRenderer to repaint every placed widget (each draws its own city, in its own
+ * style). On any failure it repaints from the last cache instead.
  *
- * Runs entirely outside the WebView/app process — this is what lets the
- * widget stay fresh even when the app itself hasn't been opened in hours.
+ * No Quarc server and no login token are involved — the phone talks to the weather provider itself, so the
+ * widget keeps updating with Tailscale off. And it runs entirely outside the WebView/app process, which is
+ * what lets the widget stay fresh even when the app itself hasn't been opened in hours.
  */
 public class WeatherWidgetWorker extends Worker {
 
@@ -47,64 +44,47 @@ public class WeatherWidgetWorker extends Worker {
         super(context, params);
     }
 
-    private static class AuthException extends Exception {}
-
     @NonNull
     @Override
     public Result doWork() {
         Context context = getApplicationContext();
-        SharedPreferences session = context.getSharedPreferences(WidgetBridgePlugin.PREFS, Context.MODE_PRIVATE);
-        String token = session.getString(WidgetBridgePlugin.KEY_TOKEN, null);
-        String server = session.getString(WidgetBridgePlugin.KEY_SERVER, null);
+        SharedPreferences stored = context.getSharedPreferences(WidgetBridgePlugin.PREFS, Context.MODE_PRIVATE);
+        String citiesJson = stored.getString(WidgetBridgePlugin.KEY_CITIES, null);
 
-        if (token == null || server == null) {
+        // Nothing handed over yet (the app was never opened since this version, or the user signed out):
+        // the widget says to open the app, there is nothing to fetch.
+        if (citiesJson == null) {
             WidgetCache.setState(context, WidgetCache.STATE_SIGNED_OUT);
             paintFromCache(context, AppWidgetManager.getInstance(context), widgetIds(context));
             return Result.success();
         }
 
+        List<WidgetCities.Place> places = WidgetCities.parse(citiesJson);
+        if (places.isEmpty()) {
+            WidgetCache.saveOverview(context, "[]", true);
+            paintFromCache(context, AppWidgetManager.getInstance(context), widgetIds(context));
+            return Result.success();
+        }
+
+        boolean fahrenheit = "imperial".equals(stored.getString(WidgetBridgePlugin.KEY_UNITS, "metric"));
+        JSONArray previous = null;
         try {
-            String json = httpGet(server + "/api/weather/overview", token);
-            // Parsed only to learn whether there is anything to show; the raw response is what's
-            // stored, so each widget can pick (and re-pick) its own city without another request.
-            WidgetCache.saveOverview(context, json, new JSONArray(json).length() == 0);
-            paintFromCache(context, AppWidgetManager.getInstance(context), widgetIds(context));
-            return Result.success();
-        } catch (AuthException e) {
-            WidgetCache.setState(context, WidgetCache.STATE_SIGNED_OUT);
-            paintFromCache(context, AppWidgetManager.getInstance(context), widgetIds(context));
-            return Result.success();
-        } catch (Exception e) {
-            // Network hiccup, malformed response, etc. — leave whatever was
-            // last successfully cached on screen instead of showing an
-            // error; WorkManager retries this on its own backoff schedule.
+            previous = new JSONArray(WidgetCache.overviewJson(context));
+        } catch (Exception ignored) {
+            // No usable previous overview — failed cities just get an empty placeholder.
+        }
+
+        WeatherFetcher.Result fetched = WeatherFetcher.fetchAll(places, fahrenheit, previous);
+        if (fetched.fresh == 0) {
+            // Offline, or the provider is down: leave whatever was last cached on screen instead of an
+            // error; WorkManager retries on its own backoff schedule.
             paintFromCache(context, AppWidgetManager.getInstance(context), widgetIds(context));
             return Result.retry();
         }
-    }
-
-    private String httpGet(String urlStr, String token) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-        try {
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Cookie", "token=" + token);
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-
-            int code = conn.getResponseCode();
-            if (code == 401) throw new AuthException();
-            if (code != 200) throw new Exception("HTTP " + code);
-
-            InputStream in = conn.getInputStream();
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            in.close();
-            return out.toString("UTF-8");
-        } finally {
-            conn.disconnect();
-        }
+        // The whole overview is stored, so each widget can pick (and re-pick) its own city without another request.
+        WidgetCache.saveOverview(context, fetched.entries.toString(), false);
+        paintFromCache(context, AppWidgetManager.getInstance(context), widgetIds(context));
+        return Result.success();
     }
 
     private static int[] widgetIds(Context context) {

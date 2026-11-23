@@ -22,11 +22,8 @@ import androidx.work.WorkerParameters;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -35,9 +32,9 @@ import java.util.concurrent.TimeUnit;
  * post the daily "good morning" weather briefing configured in Settings —
  * and if so, fetches the top city's conditions and posts a notification.
  * Runs entirely independently of the app being open, same architecture as
- * WeatherWidgetWorker (and shares its harvested session token — a
- * notification and a widget both just need "the logged-in session", there's
- * no reason for two separate copies of that bridge).
+ * WeatherWidgetWorker (and shares its list of places and its direct-from-
+ * the-weather-provider fetching — a notification and a widget both just
+ * need "where is the user's weather", there's no reason for two copies).
  */
 public class DailyBriefingWorker extends Worker {
 
@@ -96,41 +93,21 @@ public class DailyBriefingWorker extends Worker {
             return Result.success();
         }
 
-        SharedPreferences session = context.getSharedPreferences(WidgetBridgePlugin.PREFS, Context.MODE_PRIVATE);
-        String token = session.getString(WidgetBridgePlugin.KEY_TOKEN, null);
-        String server = session.getString(WidgetBridgePlugin.KEY_SERVER, null);
-        if (token == null || server == null) return Result.success(); // signed out — nothing to say
+        // The places the app last handed over (My Location first, then the saved cities). Nothing there
+        // (signed out, or never opened since this version) — nothing to say.
+        SharedPreferences stored = context.getSharedPreferences(WidgetBridgePlugin.PREFS, Context.MODE_PRIVATE);
+        List<WidgetCities.Place> places = WidgetCities.parse(stored.getString(WidgetBridgePlugin.KEY_CITIES, null));
+        if (places.isEmpty()) return Result.success();
+        boolean fahrenheit = "imperial".equals(stored.getString(WidgetBridgePlugin.KEY_UNITS, "metric"));
 
         try {
-            String json = httpGet(server + "/api/weather/overview", token);
-            JSONArray cities = new JSONArray(json);
-            if (cities.length() == 0) return Result.success();
-            postNotification(context, cities.getJSONObject(0));
+            // Straight from the weather provider — no Quarc server, no login token, no Tailscale.
+            JSONObject top = WeatherFetcher.fetchOne(places.get(0), fahrenheit);
+            postNotification(context, top);
             prefs.edit().putString(KEY_LAST_SENT_DATE, today).apply();
             return Result.success();
         } catch (Exception e) {
             return Result.retry();
-        }
-    }
-
-    private String httpGet(String urlStr, String token) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-        try {
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Cookie", "token=" + token);
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            int code = conn.getResponseCode();
-            if (code != 200) throw new Exception("HTTP " + code);
-            InputStream in = conn.getInputStream();
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            in.close();
-            return out.toString("UTF-8");
-        } finally {
-            conn.disconnect();
         }
     }
 

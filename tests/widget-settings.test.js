@@ -126,14 +126,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       Plugins: {
         App: { getInfo: async () => ({ version: '1.0.9' }) },
         Geolocation: {
-          requestPermissions: async () => ({ location: 'denied' }),
-          getCurrentPosition: async () => { throw new Error('denied'); },
+          // Denied unless a test stores a position in localStorage('__geo') first.
+          requestPermissions: async () => ({ location: localStorage.getItem('__geo') ? 'granted' : 'denied' }),
+          getCurrentPosition: async () => {
+            const g = localStorage.getItem('__geo');
+            if (!g) throw new Error('denied');
+            return { coords: JSON.parse(g) };
+          },
         },
         Updater: { downloadUpdate: () => {} },
         NotificationBridge: { setDailyBriefing: async (a) => { record('setDailyBriefing', a); } },
         WidgetBridge: {
-          syncSession: async () => {},
-          clearSession: async () => {},
+          // What the app hands the native widget: its places and the unit (see lib/widgetPlaces.js).
+          syncCities: async (a) => { record('syncCities', a); },
+          clearCities: async () => { record('clearCities'); },
           offerPin: async () => {},
           widgetCount: async () => { record('widgetCount'); return { count: window.__fake.count }; },
           openSettings: async () => { record('openSettings'); },
@@ -153,6 +159,74 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step('login inside the fake Android app', async () => {
     await login(page);
     return 'authenticated';
+  });
+
+  // ------------------------------------------------ what the app hands the native widget
+  // The widget and the morning briefing fetch their own weather from the provider, so the app only has to tell
+  // them WHICH places (saved cities, plus My Location when this device has a fix) and the unit.
+  console.log('Feeding the widget');
+  const pushes = () => page.evaluate(() => window.__calls.filter((c) => c.name === 'syncCities').map((c) => c.args));
+  const waitForPush = (check, what) =>
+    page.waitForFunction(
+      (src) => window.__calls.some((c) => c.name === 'syncCities' && new Function('a', `return (${src})(a)`)(c.args)),
+      { timeout: 10000 },
+      check.toString()
+    ).catch(async () => { throw new Error(`no hand-over matching "${what}"; saw ${JSON.stringify(await pushes()).slice(0, 300)}`); });
+
+  await step('a saved city is handed to the widget, with its coordinates and the temperature unit', async () => {
+    await H.goList({ page });
+    await H.addCityByName({ page }, 'Berlin', 'Berlin');
+    await waitForPush((a) => a.cities.some((c) => c.name === 'Berlin'), 'Berlin in the list');
+    const last = (await pushes()).filter((a) => a.cities.some((c) => c.name === 'Berlin')).pop();
+    const berlin = last.cities.find((c) => c.name === 'Berlin');
+    assert(/^c_/.test(berlin.id), `id was ${berlin.id}`);
+    assert(berlin.isPin === false, 'a saved city was flagged as My Location');
+    assert(Math.abs(berlin.latitude - 52.5) < 1 && Math.abs(berlin.longitude - 13.4) < 1, `coordinates ${berlin.latitude},${berlin.longitude}`);
+    assert(last.units === 'metric', `units were ${last.units}`);
+    assert(!last.cities.some((c) => c.isPin), 'a My Location entry appeared although location is denied');
+    return `Berlin ${berlin.latitude.toFixed(2)},${berlin.longitude.toFixed(2)} · metric`;
+  });
+
+  await step('changing the temperature unit hands the widget the new unit', async () => {
+    await page.click('button[aria-label="Settings"]');
+    await page.waitForFunction(() => location.pathname === '/settings', { timeout: 10000 });
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === '°F').click());
+    await waitForPush((a) => a.units === 'imperial', 'units imperial');
+    // Clear the log first: an older metric hand-over from the step above would satisfy the wait instantly.
+    await reset();
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === '°C').click());
+    await waitForPush((a) => a.units === 'metric', 'units back to metric');
+    return 'imperial, then metric';
+  });
+
+  await step('a burst of edits is not a burst of hand-overs (a quiet period collapses them)', async () => {
+    await reset();
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === '°F').click());
+      await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === '°C').click());
+    }
+    await sleep(2500);
+    const seen = await pushes();
+    // The burst ends exactly where it started, which the native side already has — so nothing at all is sent.
+    assert(seen.length === 0, `${seen.length} hand-overs for a burst that ended where it started: ${JSON.stringify(seen[0] || null).slice(0, 200)}`);
+    return 'none';
+  });
+
+  await step("this device's My Location is handed over FIRST, rounded, and flagged as the pin", async () => {
+    await page.evaluate(() => localStorage.setItem('__geo', JSON.stringify({ latitude: 41.0082123, longitude: 28.9784456 })));
+    try {
+      await page.goto(BASE, { waitUntil: 'networkidle2' }); // a cold start takes a GPS fix and lands on My Location
+      await waitForPush((a) => a.cities.some((c) => c.isPin), 'a My Location entry');
+      const last = (await pushes()).filter((a) => a.cities.some((c) => c.isPin)).pop();
+      const pin = last.cities[0];
+      assert(pin.isPin === true && pin.id === 'here', `first entry was ${JSON.stringify(pin)}`);
+      assert(pin.latitude === 41.008 && pin.longitude === 28.978, `not rounded to ~100 m: ${pin.latitude},${pin.longitude}`);
+      assert(pin.name && pin.name.length > 0, 'My Location has no name');
+      assert(last.cities.some((c) => c.name === 'Berlin' && !c.isPin), 'the saved city is missing next to My Location');
+      return `${pin.name} (${pin.latitude}, ${pin.longitude}) then Berlin`;
+    } finally {
+      await page.evaluate(() => localStorage.removeItem('__geo')); // later steps run as a device without a fix
+    }
   });
 
   console.log('Android, no widget placed yet');
@@ -243,6 +317,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       // browser closes, so put the account itself back too.
       await H.resetAccount(await H.currentUserId({ page }));
     }
+  });
+
+  console.log('\nSigning out');
+  await step('signing out clears the widget (it must not keep showing this person\'s cities)', async () => {
+    await openSettings(page);
+    await reset();
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === 'Log out').click());
+    await page.waitForFunction(() => window.__calls.some((c) => c.name === 'clearCities'), { timeout: 10000 });
+    return 'clearCities called';
   });
 
   console.log('\nRuntime errors');
