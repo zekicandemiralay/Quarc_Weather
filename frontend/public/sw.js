@@ -10,9 +10,20 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    (async () => {
+      const stale = (await caches.keys()).filter((k) => k !== CACHE_NAME);
+      await Promise.all(stale.map((k) => caches.delete(k)));
+      await self.clients.claim();
+
+      // An older version of this worker was running, so the page that is open right now was served from ITS cache —
+      // that is, it is the PREVIOUS version of the app. Left alone it would keep running until the next launch,
+      // and an old app against a changed server is a broken app (this matters most for an update that moves the
+      // app's data handling, like the one to direct weather fetching). Reload the open pages once, now.
+      if (stale.length) {
+        const pages = await self.clients.matchAll({ type: 'window' });
+        for (const page of pages) page.navigate(page.url).catch(() => {});
+      }
+    })()
   );
 });
 
