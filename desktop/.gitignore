@@ -1,3 +1,7 @@
 node_modules/
 src-tauri/target/
 src-tauri/gen/
+# The Windows installer bundles a build of the frontend in dist/ (copied in by CI). Only the placeholder index.html
+# that other platforms' builds point at is tracked; a built frontend must never be committed.
+dist/*
+!dist/index.html

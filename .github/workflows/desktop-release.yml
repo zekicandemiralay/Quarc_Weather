@@ -38,7 +38,8 @@ jobs:
               '**Android:** Enable "Install from unknown sources" for your file manager, then tap the APK to install.',
               '**iOS:** open the app URL in Safari and use Share → Add to Home Screen (no separate iOS build).',
               '**macOS note:** Right-click the app → Open the first time to bypass the unsigned app warning.',
-              '**All platforms:** Tailscale must be installed and connected, and you log in with the same account as Quarc Music.',
+              '**Sign-in:** use the same account as Quarc Music. Signing in, and syncing your cities and settings between devices, need Tailscale to be connected.',
+              '**Android and Windows** keep working without Tailscale once you are signed in: the weather, city search and your saved cities are on the device, and changes sync the next time Tailscale is on. macOS and Linux open the web app through the server, so they need Tailscale.',
             ].join('\n');
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
@@ -104,6 +105,20 @@ jobs:
       - name: Install desktop dependencies
         working-directory: desktop
         run: npm install
+
+      # Windows only: the app carries its own copy of the frontend (desktop/src-tauri/tauri.windows.conf.json
+      # drops the window's server URL), so it opens and works without the Quarc server — weather and city search
+      # come straight from the providers; the server is only needed to sign in and to sync. macOS and Linux keep
+      # being a window onto the server's web app, so they skip this and ship the placeholder in desktop/dist.
+      - name: Build the bundled frontend (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          VITE_API_URL: https://quarcnet0.tail84500c.ts.net:4002
+        run: |
+          npm install --prefix frontend
+          npm run build --prefix frontend
+          cp -r frontend/dist/* desktop/dist/
 
       - name: Set desktop version from tag
         if: startsWith(github.ref, 'refs/tags/v')
