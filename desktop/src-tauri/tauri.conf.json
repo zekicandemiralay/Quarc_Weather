@@ -29,9 +29,9 @@
         "title": "Quarc Weather",
         "url": "https://quarcnet0.tail84500c.ts.net:4002",
         "width": 480,
-        "height": 900,
+        "height": 640,
         "minWidth": 380,
-        "minHeight": 600,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false
       }
